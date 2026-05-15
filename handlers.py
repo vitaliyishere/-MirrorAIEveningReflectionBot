@@ -42,7 +42,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         os.remove(file_path)
         logger.info(f"Saved reflection for user {user_id}: {transcript[:50]}...")
-        await update.message.reply_text(f"✅ Записал: {transcript[:100]}{'...' if len(transcript) > 100 else ''}")
 
     except Exception as e:
         logger.error(f"Error processing voice: {e}", exc_info=True)
