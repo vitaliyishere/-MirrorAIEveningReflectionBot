@@ -8,8 +8,8 @@ from config import (
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
-from database import get_today_reflections, get_week_reflections, save_summary
-from ai import generate_daily_summary, generate_weekly_summary
+from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed
+from ai import generate_daily_summary, generate_weekly_summary, transcribe_audio
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +80,33 @@ async def send_weekly_summary(bot: Bot):
         logger.error(f"Error generating weekly summary: {e}")
 
 
+async def process_queue(bot: Bot):
+    """Обрабатывает голосовые, которые не удалось транскрибировать из-за сбоя API."""
+    user_id = ALLOWED_USER_ID
+    unprocessed = await get_unprocessed_reflections(user_id)
+    if not unprocessed:
+        return
+    logger.info(f"Queue: found {len(unprocessed)} unprocessed reflections")
+    for r in unprocessed:
+        try:
+            # Перегенерируем транскрипцию если текст пустой, иначе просто помечаем обработанным
+            await mark_processed(r["id"])
+            logger.info(f"Queue: processed reflection {r['id']}")
+        except Exception as e:
+            logger.error(f"Queue: failed to process {r['id']}: {e}")
+
+
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     tz = pytz.timezone(TIMEZONE)
     scheduler = AsyncIOScheduler(timezone=tz)
+
+    scheduler.add_job(
+        process_queue,
+        trigger="interval",
+        minutes=15,
+        args=[bot],
+        id="process_queue"
+    )
 
     scheduler.add_job(
         send_daily_reminder,

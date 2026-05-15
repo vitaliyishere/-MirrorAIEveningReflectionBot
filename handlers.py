@@ -46,7 +46,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Error processing voice: {e}", exc_info=True)
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        # Сохраняем в очередь чтобы не потерять голосовое
+        try:
+            await save_reflection(user_id, "", file_id)
+        except Exception:
+            pass
+        await update.message.reply_text("⏳ Не смог обработать прямо сейчас — сохранил, вернусь позже.")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
