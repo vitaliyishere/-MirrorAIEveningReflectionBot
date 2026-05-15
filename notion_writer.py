@@ -35,23 +35,35 @@ def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
         }
     ]
 
+    import re
+
     for line in summary.strip().split("\n"):
         line = line.strip()
         if not line:
             continue
 
-        if line.startswith("**") and line.endswith("**"):
-            # Заголовок секции
-            text = line.strip("**")
+        # **Заголовок** или **Заголовок**: → heading_3
+        heading_match = re.match(r'^\*\*(.+?)\*\*:?\s*$', line)
+        if heading_match:
+            text = heading_match.group(1)
             blocks.append({
                 "object": "block",
                 "type": "heading_3",
                 "heading_3": {
-                    "rich_text": [{"type": "text", "text": {"content": text}}]
+                    "rich_text": [{"type": "text", "text": {"content": text}, "annotations": {"bold": True}}]
                 }
             })
         elif line.startswith("- ") or line.startswith("→ "):
             text = line[2:]
+            blocks.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [{"type": "text", "text": {"content": text}}]
+                }
+            })
+        elif re.match(r'^\d+\.\s', line):
+            text = re.sub(r'^\d+\.\s', '', line)
             blocks.append({
                 "object": "block",
                 "type": "bulleted_list_item",
