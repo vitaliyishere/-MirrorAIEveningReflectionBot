@@ -1,16 +1,12 @@
 import os
 import asyncio
 import logging
-import aiohttp
-import json
 from functools import lru_cache
-from config import AUDIO_TEMP_DIR
+from config import AUDIO_TEMP_DIR, GROQ_API_KEY, GROQ_MODEL
 
 logger = logging.getLogger(__name__)
 
 WHISPER_MODEL_SIZE = "small"
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
 
 
 @lru_cache(maxsize=1)
@@ -22,23 +18,19 @@ def get_whisper_model():
     return model
 
 
-async def ollama_generate(prompt: str, system: str) -> str:
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "model": OLLAMA_MODEL,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
-            ],
-            "stream": False
-        }
-        async with session.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=120)
-        ) as resp:
-            data = await resp.json()
-            return data["message"]["content"]
+async def groq_generate(prompt: str, system: str) -> str:
+    from groq import AsyncGroq
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=800,
+        temperature=0.7
+    )
+    return response.choices[0].message.content
 
 
 DAILY_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают транскрипции голосовых сообщений человека за день.
@@ -83,7 +75,7 @@ async def generate_daily_summary(transcripts: list[str]) -> str:
     combined = "\n\n---\n\n".join(
         f"[{i+1}] {t}" for i, t in enumerate(transcripts)
     )
-    return await ollama_generate(
+    return await groq_generate(
         prompt=f"Транскрипции за сегодня:\n\n{combined}",
         system=DAILY_SYSTEM_PROMPT
     )
@@ -92,7 +84,7 @@ async def generate_daily_summary(transcripts: list[str]) -> str:
 async def generate_weekly_summary(transcripts: list[dict]) -> str:
     lines = [f"[{r['created_at'][:10]}] {r['transcript']}" for r in transcripts]
     combined = "\n\n---\n\n".join(lines)
-    return await ollama_generate(
+    return await groq_generate(
         prompt=f"Транскрипции за неделю:\n\n{combined}",
         system=WEEKLY_SYSTEM_PROMPT
     )
