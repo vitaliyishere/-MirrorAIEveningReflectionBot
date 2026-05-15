@@ -10,6 +10,7 @@ from config import (
 )
 from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed
 from ai import generate_daily_summary, generate_weekly_summary, transcribe_audio
+from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ async def send_daily_summary(bot: Bot):
             text=f"📋 *Резюме дня — {today}*\n\n{summary}",
             parse_mode="Markdown"
         )
+        await save_to_notion(summary, "daily")
         logger.info(f"Daily summary sent to {user_id}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")
@@ -75,6 +77,7 @@ async def send_weekly_summary(bot: Bot):
             text=f"🗓 *Резюме недели — {today}*\n\n{summary}",
             parse_mode="Markdown"
         )
+        await save_to_notion(summary, "weekly")
         logger.info(f"Weekly summary sent to {user_id}")
     except Exception as e:
         logger.error(f"Error generating weekly summary: {e}")
