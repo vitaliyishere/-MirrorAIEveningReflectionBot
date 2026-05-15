@@ -44,7 +44,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.remove(file_path)
         logger.info(f"Saved reflection for user {user_id}: {transcript[:50]}...")
 
-        await asyncio.sleep(3)
+        await asyncio.sleep(15)
         reaction = await generate_reaction(transcript)
         await update.message.reply_text(reaction)
 
