@@ -44,6 +44,17 @@ async def send_daily_summary(bot: Bot):
         )
 
 
+async def send_daily_reminder(bot: Bot):
+    user_id = ALLOWED_USER_ID
+    reflections = await get_today_reflections(user_id)
+    if not reflections:
+        text = "Сегодня ты ещё ничего не надиктовал. Через полчаса будет резюме дня — ещё успеешь!"
+    else:
+        text = f"Через полчаса сделаю резюме дня. Если ещё что-то хочешь добавить — сейчас самое время."
+    await bot.send_message(chat_id=user_id, text=text)
+    logger.info(f"Daily reminder sent to {user_id}")
+
+
 async def send_weekly_summary(bot: Bot):
     user_id = ALLOWED_USER_ID
     reflections = await get_week_reflections(user_id)
@@ -72,6 +83,15 @@ async def send_weekly_summary(bot: Bot):
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     tz = pytz.timezone(TIMEZONE)
     scheduler = AsyncIOScheduler(timezone=tz)
+
+    scheduler.add_job(
+        send_daily_reminder,
+        trigger="cron",
+        hour=21,
+        minute=30,
+        args=[bot],
+        id="daily_reminder"
+    )
 
     scheduler.add_job(
         send_daily_summary,
