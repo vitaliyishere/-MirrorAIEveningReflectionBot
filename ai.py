@@ -1,13 +1,16 @@
 import os
 import asyncio
 import logging
+import aiohttp
+import json
 from functools import lru_cache
-from config import OPENAI_API_KEY, AI_MODEL, AUDIO_TEMP_DIR
+from config import AUDIO_TEMP_DIR
 
 logger = logging.getLogger(__name__)
 
-# Размер модели: tiny (быстро, меньше качества) | base | small | medium (лучше, ~1GB)
 WHISPER_MODEL_SIZE = "small"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
 
 
 @lru_cache(maxsize=1)
@@ -19,9 +22,23 @@ def get_whisper_model():
     return model
 
 
-def get_openai_client():
-    from openai import AsyncOpenAI
-    return AsyncOpenAI(api_key=OPENAI_API_KEY)
+async def ollama_generate(prompt: str, system: str) -> str:
+    async with aiohttp.ClientSession() as session:
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": False
+        }
+        async with session.post(
+            f"{OLLAMA_BASE_URL}/api/chat",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=120)
+        ) as resp:
+            data = await resp.json()
+            return data["message"]["content"]
 
 
 DAILY_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают транскрипции голосовых сообщений человека за день.
@@ -63,39 +80,22 @@ async def transcribe_audio(file_path: str) -> str:
 
 
 async def generate_daily_summary(transcripts: list[str]) -> str:
-    client = get_openai_client()
     combined = "\n\n---\n\n".join(
         f"[{i+1}] {t}" for i, t in enumerate(transcripts)
     )
-    response = await client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[
-            {"role": "system", "content": DAILY_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Транскрипции за сегодня:\n\n{combined}"}
-        ],
-        max_tokens=800,
-        temperature=0.7
+    return await ollama_generate(
+        prompt=f"Транскрипции за сегодня:\n\n{combined}",
+        system=DAILY_SYSTEM_PROMPT
     )
-    return response.choices[0].message.content
 
 
 async def generate_weekly_summary(transcripts: list[dict]) -> str:
-    client = get_openai_client()
-    lines = []
-    for r in transcripts:
-        lines.append(f"[{r['created_at'][:10]}] {r['transcript']}")
+    lines = [f"[{r['created_at'][:10]}] {r['transcript']}" for r in transcripts]
     combined = "\n\n---\n\n".join(lines)
-
-    response = await client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[
-            {"role": "system", "content": WEEKLY_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Транскрипции за неделю:\n\n{combined}"}
-        ],
-        max_tokens=1000,
-        temperature=0.7
+    return await ollama_generate(
+        prompt=f"Транскрипции за неделю:\n\n{combined}",
+        system=WEEKLY_SYSTEM_PROMPT
     )
-    return response.choices[0].message.content
 
 
 def ensure_audio_dir():
