@@ -33,6 +33,38 @@ async def groq_generate(prompt: str, system: str) -> str:
     return response.choices[0].message.content
 
 
+REACTION_SYSTEM_PROMPT = """Ты — молчаливый свидетель. Человек наговорил тебе голосовое.
+
+Ответь ОДНОЙ фразой — максимум 4 слова. Только подтверждение что услышал, никаких советов, вопросов, анализа.
+
+Хорошие примеры (именно такой стиль):
+- Слышу.
+- Запомнил.
+- Значит серьёзно.
+- Взят.
+- Интересный поворот.
+- Чувствуется напряжение.
+- Понял тебя.
+- Ок, записал.
+
+Реагируй на тон и суть. Одна фраза, точка. Больше ничего."""
+
+
+async def generate_reaction(transcript: str) -> str:
+    from groq import AsyncGroq
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": REACTION_SYSTEM_PROMPT},
+            {"role": "user", "content": transcript}
+        ],
+        max_tokens=20,
+        temperature=1.2
+    )
+    return response.choices[0].message.content.strip()
+
+
 DAILY_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают транскрипции голосовых сообщений человека за день.
 
 Твоя задача — дать структурированное резюме дня и честный взгляд со стороны. Не пересказывай — ищи паттерны, противоречия, скрытые мотивы.

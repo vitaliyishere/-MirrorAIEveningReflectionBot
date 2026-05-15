@@ -1,10 +1,11 @@
 import os
+import asyncio
 import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ALLOWED_USER_ID, AUDIO_TEMP_DIR
 from database import save_reflection
-from ai import transcribe_audio, ensure_audio_dir
+from ai import transcribe_audio, ensure_audio_dir, generate_reaction
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         os.remove(file_path)
         logger.info(f"Saved reflection for user {user_id}: {transcript[:50]}...")
+
+        await asyncio.sleep(3)
+        reaction = await generate_reaction(transcript)
+        await update.message.reply_text(reaction)
 
     except Exception as e:
         logger.error(f"Error processing voice: {e}", exc_info=True)
