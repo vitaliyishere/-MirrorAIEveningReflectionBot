@@ -17,3 +17,4 @@ WEEKLY_SUMMARY_MINUTE = 0
 
 DB_PATH = os.getenv("DB_PATH", "reflections.db")
 AUDIO_TEMP_DIR = os.getenv("AUDIO_TEMP_DIR", "/data/audio")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))

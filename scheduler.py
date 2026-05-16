@@ -5,7 +5,7 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Bot
 from config import (
-    ALLOWED_USER_ID, TIMEZONE,
+    ALLOWED_USER_ID, TIMEZONE, CHANNEL_ID,
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
@@ -42,6 +42,8 @@ async def send_daily_summary(bot: Bot):
         if completed_tasks:
             tg_text += f"\n\n✅ *Сделано сегодня*\n{completed_tasks}"
         await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
+        if CHANNEL_ID:
+            await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks)
         logger.info(f"Daily summary sent to {user_id}")
     except Exception as e:
