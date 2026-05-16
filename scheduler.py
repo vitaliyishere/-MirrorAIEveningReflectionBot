@@ -36,23 +36,12 @@ async def send_daily_summary(bot: Bot):
 
         completed_tasks = await get_today_completed_tasks(user_id)
 
-        # Конвертируем Markdown в HTML
-        def md_to_html(text: str) -> str:
-            import re
-            text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
-            text = re.sub(r'\*(.+?)\*', r'<b>\1</b>', text)
-            return text
-
-        tg_text = f"📋 <b>Резюме дня — {today}</b>\n\n{md_to_html(summary)}"
+        tg_text = f"📋 *Резюме дня — {today}*\n\n{summary}"
         if chronicle:
-            tg_text += f"\n\n<b>Хроника дня</b>\n{chronicle}"
+            tg_text += f"\n\n*Хроника дня*\n{chronicle}"
         if completed_tasks:
-            tasks_html = "\n".join(
-                f"<s>{line.strip().lstrip('•- ')}</s>"
-                for line in completed_tasks.strip().split("\n") if line.strip()
-            )
-            tg_text += f"\n\n✅ <b>Сделано сегодня</b>\n{tasks_html}"
-        await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="HTML")
+            tg_text += f"\n\n✅ *Сделано сегодня*\n{completed_tasks}"
+        await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks)
         logger.info(f"Daily summary sent to {user_id}")
     except Exception as e:
