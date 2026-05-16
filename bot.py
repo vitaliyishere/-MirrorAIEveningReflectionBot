@@ -28,6 +28,8 @@ async def post_init(application: Application):
 
 
 async def run_web_server():
+    await init_db()
+    logger.info("Database initialized")
     app = create_app()
     runner = web.AppRunner(app)
     await runner.setup()
