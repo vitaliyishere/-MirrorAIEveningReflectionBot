@@ -119,7 +119,7 @@ def _make_verbatim_toggle(reflections: list[dict]) -> dict:
     }
 
 
-async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None):
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
@@ -143,6 +143,24 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
                         "type": "paragraph",
                         "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]}
                     })
+
+        # Внешние заметки — каждая в отдельном toggle
+        if summary_type == "daily" and notes:
+            for note in notes:
+                time = note["created_at"][11:16] if len(note.get("created_at", "")) >= 16 else ""
+                first_line = note["content"].strip().split("\n")[0].strip("# ").strip()[:60]
+                title = f"📌 {time} · {first_line}"
+                chunks = [note["content"][i:i+1999] for i in range(0, len(note["content"]), 1999)]
+                children = [{"object": "block", "type": "paragraph", "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": chunk}, "annotations": {"color": "gray"}}]
+                }} for chunk in chunks]
+                blocks.insert(-1, {
+                    "object": "block", "type": "toggle",
+                    "toggle": {
+                        "rich_text": [{"type": "text", "text": {"content": title}, "annotations": {"bold": True}}],
+                        "children": children
+                    }
+                })
 
         # Выполненные задачи из Reminders
         if summary_type == "daily" and completed_tasks:

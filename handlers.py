@@ -55,6 +55,21 @@ async def handle_channel_voice(update: Update, context: ContextTypes.DEFAULT_TYP
     await _queue_voice(update, context, post.chat.id, ALLOWED_USER_ID, post.voice, post.message_id)
 
 
+def _is_external_note(text: str) -> bool:
+    import re
+    if len(text) < 500:
+        return False
+    structure_patterns = [
+        r'^#{1,3} ',       # заголовки markdown
+        r'^---+$',         # разделители
+        r'\*\*.+?\*\*',    # жирный текст
+        r'^\* ',           # маркированные списки со звёздочкой
+        r'^> ',            # цитаты
+    ]
+    matches = sum(1 for p in structure_patterns if re.search(p, text, re.MULTILINE))
+    return matches >= 2
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
@@ -76,6 +91,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reaction=[ReactionTypeEmoji("✅")]
         )
         logger.info(f"Saved completed tasks for user {user_id}")
+        return
+
+    # Длинный структурированный текст → внешняя заметка
+    if _is_external_note(text):
+        from database import save_note
+        await save_note(user_id, text)
+        await context.bot.set_message_reaction(
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            reaction=[ReactionTypeEmoji("📌")]
+        )
+        logger.info(f"Saved external note for user {user_id} ({len(text)} chars)")
         return
 
     await save_reflection(user_id, text)
