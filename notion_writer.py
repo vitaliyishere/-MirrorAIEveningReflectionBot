@@ -59,7 +59,7 @@ def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
                 "object": "block",
                 "type": "bulleted_list_item",
                 "bulleted_list_item": {
-                    "rich_text": [{"type": "text", "text": {"content": text}}]
+                    "rich_text": _parse_inline(text)
                 }
             })
         elif re.match(r'^\d+\.\s', line):
@@ -68,7 +68,7 @@ def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
                 "object": "block",
                 "type": "bulleted_list_item",
                 "bulleted_list_item": {
-                    "rich_text": [{"type": "text", "text": {"content": text}}]
+                    "rich_text": _parse_inline(text)
                 }
             })
         else:
@@ -76,7 +76,7 @@ def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [{"type": "text", "text": {"content": line}}]
+                    "rich_text": _parse_inline(line)
                 }
             })
 
