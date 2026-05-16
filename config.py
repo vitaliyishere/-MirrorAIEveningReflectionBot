@@ -16,4 +16,4 @@ WEEKLY_SUMMARY_HOUR = 20
 WEEKLY_SUMMARY_MINUTE = 0
 
 DB_PATH = os.getenv("DB_PATH", "reflections.db")
-AUDIO_TEMP_DIR = os.getenv("AUDIO_TEMP_DIR", "/tmp/reflection_audio")
+AUDIO_TEMP_DIR = os.getenv("AUDIO_TEMP_DIR", "/data/audio")

@@ -1,3 +1,4 @@
+import os
 import logging
 from datetime import datetime, date
 import pytz
@@ -8,8 +9,8 @@ from config import (
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
-from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed
-from ai import generate_daily_summary, generate_weekly_summary, transcribe_audio
+from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript
+from ai import generate_daily_summary, generate_weekly_summary, transcribe_audio, generate_reaction
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -84,19 +85,33 @@ async def send_weekly_summary(bot: Bot):
 
 
 async def process_queue(bot: Bot):
-    """Обрабатывает голосовые, которые не удалось транскрибировать из-за сбоя API."""
+    """Берёт один файл из очереди, транскрибирует и отправляет реакцию."""
     user_id = ALLOWED_USER_ID
-    unprocessed = await get_unprocessed_reflections(user_id)
-    if not unprocessed:
+    r = await get_one_unprocessed(user_id)
+    if not r:
         return
-    logger.info(f"Queue: found {len(unprocessed)} unprocessed reflections")
-    for r in unprocessed:
+
+    audio_path = r.get("audio_path")
+    if not audio_path or not os.path.exists(audio_path):
+        await mark_processed(r["id"])
+        return
+
+    try:
+        logger.info(f"Queue: transcribing {audio_path}")
+        transcript = await transcribe_audio(audio_path)
+        await update_transcript(r["id"], transcript)
+
         try:
-            # Перегенерируем транскрипцию если текст пустой, иначе просто помечаем обработанным
-            await mark_processed(r["id"])
-            logger.info(f"Queue: processed reflection {r['id']}")
-        except Exception as e:
-            logger.error(f"Queue: failed to process {r['id']}: {e}")
+            os.remove(audio_path)
+        except Exception:
+            pass
+
+        reaction = await generate_reaction(transcript)
+        await bot.send_message(chat_id=user_id, text=reaction)
+        logger.info(f"Queue: done reflection {r['id']}: {transcript[:50]}...")
+
+    except Exception as e:
+        logger.error(f"Queue: failed {r['id']}: {e}")
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
@@ -106,7 +121,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(
         process_queue,
         trigger="interval",
-        minutes=15,
+        minutes=5,
         args=[bot],
         id="process_queue"
     )

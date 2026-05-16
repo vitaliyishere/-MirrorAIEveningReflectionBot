@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from config import ALLOWED_USER_ID, AUDIO_TEMP_DIR
 from database import save_reflection
-from ai import transcribe_audio, ensure_audio_dir, generate_reaction
+from ai import ensure_audio_dir
 
 logger = logging.getLogger(__name__)
 
@@ -34,28 +34,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ensure_audio_dir()
         file = await context.bot.get_file(file_id)
-        file_path = os.path.join(AUDIO_TEMP_DIR, f"{file_id}.ogg")
-        await file.download_to_drive(file_path)
-        logger.info(f"Audio downloaded: {file_path}")
+        audio_path = os.path.join(AUDIO_TEMP_DIR, f"{file_id}.ogg")
+        await file.download_to_drive(audio_path)
+        logger.info(f"Audio queued: {audio_path}")
 
-        transcript = await transcribe_audio(file_path)
-        await save_reflection(user_id, transcript, file_id)
-
-        os.remove(file_path)
-        logger.info(f"Saved reflection for user {user_id}: {transcript[:50]}...")
-
-        await asyncio.sleep(15)
-        reaction = await generate_reaction(transcript)
-        await update.message.reply_text(reaction)
+        await save_reflection(user_id, audio_path=audio_path, audio_file_id=file_id)
+        await update.message.reply_text("👍")
 
     except Exception as e:
-        logger.error(f"Error processing voice: {e}", exc_info=True)
-        # Сохраняем в очередь чтобы не потерять голосовое
-        try:
-            await save_reflection(user_id, "", file_id)
-        except Exception:
-            pass
-        await update.message.reply_text("⏳ Не смог обработать прямо сейчас — сохранил, вернусь позже.")
+        logger.error(f"Error receiving voice: {e}", exc_info=True)
+        await update.message.reply_text("⏳ Не смог сохранить — попробуй ещё раз.")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
