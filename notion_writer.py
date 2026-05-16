@@ -119,7 +119,7 @@ def _make_verbatim_toggle(reflections: list[dict]) -> dict:
     }
 
 
-async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None):
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
@@ -128,10 +128,25 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
         client = AsyncClient(auth=NOTION_TOKEN)
         blocks = _parse_summary_to_blocks(summary, summary_type)
 
-        # Для дневного резюме добавляем toggle с сырыми транскрипциями
+        # Хроника дня
+        if summary_type == "daily" and chronicle:
+            blocks.insert(-1, {
+                "object": "block",
+                "type": "heading_3",
+                "heading_3": {"rich_text": [{"type": "text", "text": {"content": "Хроника дня"}, "annotations": {"bold": True}}]}
+            })
+            for line in chronicle.strip().split("\n"):
+                line = line.strip()
+                if line:
+                    blocks.insert(-1, {
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]}
+                    })
+
+        # Toggle с сырыми транскрипциями
         if summary_type == "daily" and reflections:
             toggle = _make_verbatim_toggle(reflections)
-            # Вставляем toggle перед разделителем
             blocks.insert(-1, toggle)
 
         await client.blocks.children.append(

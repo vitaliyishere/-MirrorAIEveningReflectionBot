@@ -95,6 +95,60 @@ DAILY_SYSTEM_PROMPT = """Ты — личный рефлексивный асси
 
 Пиши живо и тепло. Без канцелярита."""
 
+CHRONICLE_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают голосовые сообщения человека, сгруппированные по временным блокам.
+
+Для каждого блока напиши одну строку в формате:
+[эмодзи по смыслу] **ЧЧ:ММ–ЧЧ:ММ · Название блока**
+Следующая строка: одно предложение — суть того о чём говорил в этот период.
+
+ВАЖНО:
+- Если внутри одного временного блока явно сменился контекст (например, начал с медитации, потом перешёл к работе) — раздели на два блока
+- Сохраняй тон: позитивное позитивно, не переворачивай
+- Эмодзи: 🧘 медитация, 💡 инсайты, 🚀 работа/продукт, ❤️ отношения, 💰 финансы, ⚡ действия, 😴 сны, 🌟 открытия
+
+Выведи только строки блоков, без вступлений."""
+
+
+def _cluster_by_time(reflections: list[dict], gap_minutes: int = 90) -> list[list[dict]]:
+    """Группирует рефлексии по временным паузам."""
+    from datetime import datetime
+    if not reflections:
+        return []
+    clusters = [[reflections[0]]]
+    for r in reflections[1:]:
+        try:
+            prev_time = datetime.fromisoformat(clusters[-1][-1]["created_at"])
+            curr_time = datetime.fromisoformat(r["created_at"])
+            if (curr_time - prev_time).total_seconds() > gap_minutes * 60:
+                clusters.append([r])
+            else:
+                clusters[-1].append(r)
+        except Exception:
+            clusters[-1].append(r)
+    return clusters
+
+
+async def generate_chronicle(reflections: list[dict]) -> str:
+    """Генерирует хронику дня по временным блокам + контексту."""
+    if not reflections:
+        return ""
+
+    clusters = _cluster_by_time(reflections, gap_minutes=90)
+    if len(clusters) <= 1 and len(reflections) <= 2:
+        return ""
+
+    # Формируем описание кластеров для Groq
+    blocks_text = []
+    for cluster in clusters:
+        start = cluster[0]["created_at"][11:16]
+        end = cluster[-1]["created_at"][11:16]
+        texts = " ".join(r["transcript"] for r in cluster if r.get("transcript"))
+        blocks_text.append(f"[{start}–{end}]\n{texts}")
+
+    prompt = "\n\n---\n\n".join(blocks_text)
+    return await groq_generate(prompt=prompt, system=CHRONICLE_SYSTEM_PROMPT)
+
+
 WEEKLY_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают транскрипции голосовых сообщений человека за неделю.
 
 Составь резюме недели в три раздела. Каждый раздел начинается с жирного заголовка, внутри — тезисы с эмодзи.

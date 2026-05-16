@@ -10,7 +10,7 @@ from config import (
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
 from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript
-from ai import generate_daily_summary, generate_weekly_summary, transcribe_audio, generate_reaction
+from ai import generate_daily_summary, generate_weekly_summary, generate_chronicle, transcribe_audio, generate_reaction
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -30,14 +30,15 @@ async def send_daily_summary(bot: Bot):
     transcripts = [r["transcript"] for r in reflections]
     try:
         summary = await generate_daily_summary(transcripts)
+        chronicle = await generate_chronicle(reflections)
         today = date.today().isoformat()
         await save_summary(user_id, "daily", summary, today)
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"📋 *Резюме дня — {today}*\n\n{summary}",
-            parse_mode="Markdown"
-        )
-        await save_to_notion(summary, "daily", reflections)
+
+        tg_text = f"📋 *Резюме дня — {today}*\n\n{summary}"
+        if chronicle:
+            tg_text += f"\n\n**Хроника дня**\n{chronicle}"
+        await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
+        await save_to_notion(summary, "daily", reflections, chronicle)
         logger.info(f"Daily summary sent to {user_id}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")
