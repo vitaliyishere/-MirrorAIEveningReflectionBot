@@ -86,7 +86,40 @@ def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
     return blocks
 
 
-async def save_to_notion(summary: str, summary_type: str):
+def _make_verbatim_toggle(reflections: list[dict]) -> dict:
+    lines = []
+    for r in reflections:
+        time = r["created_at"][11:16] if len(r.get("created_at", "")) >= 16 else ""
+        transcript = r.get("transcript", "").strip()
+        if transcript:
+            lines.append(f"[{time}] {transcript}")
+
+    raw_text = "\n\n".join(lines)
+    # Notion paragraph max 2000 chars — разбиваем на чанки
+    chunks = [raw_text[i:i+1999] for i in range(0, len(raw_text), 1999)]
+
+    children = [
+        {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": chunk}, "annotations": {"color": "gray"}}]
+            }
+        }
+        for chunk in chunks
+    ]
+
+    return {
+        "object": "block",
+        "type": "toggle",
+        "toggle": {
+            "rich_text": [{"type": "text", "text": {"content": "🎙️ Дословно"}, "annotations": {"bold": True}}],
+            "children": children
+        }
+    }
+
+
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
@@ -94,6 +127,13 @@ async def save_to_notion(summary: str, summary_type: str):
     try:
         client = AsyncClient(auth=NOTION_TOKEN)
         blocks = _parse_summary_to_blocks(summary, summary_type)
+
+        # Для дневного резюме добавляем toggle с сырыми транскрипциями
+        if summary_type == "daily" and reflections:
+            toggle = _make_verbatim_toggle(reflections)
+            # Вставляем toggle перед разделителем
+            blocks.insert(-1, toggle)
+
         await client.blocks.children.append(
             block_id=NOTION_PAGE_ID,
             children=blocks

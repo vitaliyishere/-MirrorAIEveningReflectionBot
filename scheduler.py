@@ -37,7 +37,7 @@ async def send_daily_summary(bot: Bot):
             text=f"📋 *Резюме дня — {today}*\n\n{summary}",
             parse_mode="Markdown"
         )
-        await save_to_notion(summary, "daily")
+        await save_to_notion(summary, "daily", reflections)
         logger.info(f"Daily summary sent to {user_id}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")
