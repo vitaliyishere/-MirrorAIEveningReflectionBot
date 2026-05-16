@@ -64,10 +64,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Специальный формат от Apple Shortcuts
-    if text.startswith("📋TASKS:"):
+    if text.startswith("📋TASKS:") or text.startswith("TASKS:"):
         from database import save_completed_tasks
         from datetime import date
-        tasks_text = text[len("📋TASKS:"):].strip()
+        prefix = "📋TASKS:" if text.startswith("📋TASKS:") else "TASKS:"
+        tasks_text = text[len(prefix):].strip()
         await save_completed_tasks(user_id, tasks_text, date.today().isoformat())
         await context.bot.set_message_reaction(
             chat_id=update.effective_chat.id,
