@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from telegram import Update
+from telegram import Update, ReactionTypeEmoji
 from telegram.ext import ContextTypes
 from config import ALLOWED_USER_ID, AUDIO_TEMP_DIR
 from database import save_reflection
@@ -23,7 +23,7 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voice):
+async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voice, message_id: int):
     try:
         ensure_audio_dir()
         file = await context.bot.get_file(voice.file_id)
@@ -31,7 +31,11 @@ async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voic
         await file.download_to_drive(audio_path)
         logger.info(f"Audio queued from chat {chat_id}: {audio_path}")
         await save_reflection(user_id, audio_path=audio_path, audio_file_id=voice.file_id, chat_id=chat_id)
-        await context.bot.send_message(chat_id=chat_id, text="👍")
+        await context.bot.set_message_reaction(
+            chat_id=chat_id,
+            message_id=message_id,
+            reaction=[ReactionTypeEmoji("👌")]
+        )
     except Exception as e:
         logger.error(f"Error receiving voice: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text="⏳ Не смог сохранить — попробуй ещё раз.")
@@ -40,16 +44,15 @@ async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voic
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
-    await _queue_voice(update, context, update.effective_chat.id, update.effective_user.id, update.message.voice)
+    msg = update.message
+    await _queue_voice(update, context, msg.chat.id, update.effective_user.id, msg.voice, msg.message_id)
 
 
 async def handle_channel_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик голосовых из канала."""
     post = update.channel_post
     if not post or not post.voice:
         return
-    chat_id = post.chat.id
-    await _queue_voice(update, context, chat_id, ALLOWED_USER_ID, post.voice)
+    await _queue_voice(update, context, post.chat.id, ALLOWED_USER_ID, post.voice, post.message_id)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
