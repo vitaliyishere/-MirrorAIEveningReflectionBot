@@ -152,12 +152,15 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
                 "heading_3": {"rich_text": [{"type": "text", "text": {"content": "✅ Сделано сегодня"}, "annotations": {"bold": True}}]}
             })
             for line in completed_tasks.strip().split("\n"):
-                line = line.strip()
+                line = line.strip().lstrip("•- ")
                 if line:
                     blocks.insert(-1, {
                         "object": "block",
-                        "type": "bulleted_list_item",
-                        "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": line.lstrip("•- ")}}]}
+                        "type": "to_do",
+                        "to_do": {
+                            "rich_text": [{"type": "text", "text": {"content": line}}],
+                            "checked": True
+                        }
                     })
 
         # Toggle с сырыми транскрипциями
