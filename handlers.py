@@ -163,6 +163,14 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Сегодня: {count} запись(-ей). Резюме придёт в 22:00.")
 
 
+async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        return
+    await update.message.reply_text("⏳ Генерирую резюме...")
+    from scheduler import send_daily_summary
+    await send_daily_summary(context.bot)
+
+
 async def handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
