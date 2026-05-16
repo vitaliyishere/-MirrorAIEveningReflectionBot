@@ -119,7 +119,7 @@ def _make_verbatim_toggle(reflections: list[dict]) -> dict:
     }
 
 
-async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None):
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
@@ -142,6 +142,22 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
                         "object": "block",
                         "type": "paragraph",
                         "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]}
+                    })
+
+        # Выполненные задачи из Reminders
+        if summary_type == "daily" and completed_tasks:
+            blocks.insert(-1, {
+                "object": "block",
+                "type": "heading_3",
+                "heading_3": {"rich_text": [{"type": "text", "text": {"content": "✅ Сделано сегодня"}, "annotations": {"bold": True}}]}
+            })
+            for line in completed_tasks.strip().split("\n"):
+                line = line.strip()
+                if line:
+                    blocks.insert(-1, {
+                        "object": "block",
+                        "type": "bulleted_list_item",
+                        "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": line.lstrip("•- ")}}]}
                     })
 
         # Toggle с сырыми транскрипциями

@@ -24,6 +24,15 @@ async def init_db():
             except Exception:
                 pass
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS completed_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                task_date TEXT NOT NULL,
+                raw_text TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS summaries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -107,6 +116,25 @@ async def mark_processed(reflection_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE reflections SET processed = 1 WHERE id = ?", (reflection_id,))
         await db.commit()
+
+
+async def save_completed_tasks(user_id: int, raw_text: str, task_date: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO completed_tasks (user_id, task_date, raw_text) VALUES (?, ?, ?)",
+            (user_id, task_date, raw_text)
+        )
+        await db.commit()
+
+
+async def get_today_completed_tasks(user_id: int) -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT raw_text FROM completed_tasks WHERE user_id = ? AND task_date = date('now', 'localtime') ORDER BY created_at DESC LIMIT 1",
+            (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
 
 
 async def save_summary(user_id: int, summary_type: str, content: str, date: str):

@@ -58,12 +58,27 @@ async def handle_channel_voice(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
-    # Текстовые сообщения тоже сохраняем как рефлексии
     user_id = update.effective_user.id
     text = update.message.text
-    if text and not text.startswith("/"):
-        await save_reflection(user_id, text)
-        logger.info(f"Saved text reflection for user {user_id}")
+    if not text or text.startswith("/"):
+        return
+
+    # Специальный формат от Apple Shortcuts
+    if text.startswith("📋TASKS:"):
+        from database import save_completed_tasks
+        from datetime import date
+        tasks_text = text[len("📋TASKS:"):].strip()
+        await save_completed_tasks(user_id, tasks_text, date.today().isoformat())
+        await context.bot.set_message_reaction(
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            reaction=[ReactionTypeEmoji("✅")]
+        )
+        logger.info(f"Saved completed tasks for user {user_id}")
+        return
+
+    await save_reflection(user_id, text)
+    logger.info(f"Saved text reflection for user {user_id}")
 
 
 async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
