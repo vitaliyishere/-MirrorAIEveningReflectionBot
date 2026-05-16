@@ -28,7 +28,8 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 content TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             )
         """)
         await db.execute("""
@@ -126,6 +127,20 @@ async def mark_processed(reflection_id: int):
         await db.commit()
 
 
+async def get_recent_note(user_id: int, within_minutes: int = 3) -> dict | None:
+    """Возвращает последнюю заметку если она создана < N минут назад."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM notes WHERE user_id = ?
+               AND updated_at >= datetime('now', 'localtime', ? )
+               ORDER BY updated_at DESC LIMIT 1""",
+            (user_id, f"-{within_minutes} minutes")
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
 async def save_note(user_id: int, content: str) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
@@ -134,6 +149,16 @@ async def save_note(user_id: int, content: str) -> int:
         )
         await db.commit()
         return cursor.lastrowid
+
+
+async def append_to_note(note_id: int, content: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """UPDATE notes SET content = content || '\n\n' || ?,
+               updated_at = datetime('now', 'localtime') WHERE id = ?""",
+            (content, note_id)
+        )
+        await db.commit()
 
 
 async def get_today_notes(user_id: int) -> list[dict]:

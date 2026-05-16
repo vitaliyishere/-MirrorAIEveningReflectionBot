@@ -95,14 +95,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Длинный структурированный текст → внешняя заметка
     if _is_external_note(text):
-        from database import save_note
-        await save_note(user_id, text)
+        from database import save_note, get_recent_note, append_to_note
+        recent = await get_recent_note(user_id, within_minutes=3)
+        if recent:
+            await append_to_note(recent["id"], text)
+            logger.info(f"Appended to note {recent['id']} for user {user_id} ({len(text)} chars)")
+        else:
+            await save_note(user_id, text)
+            logger.info(f"Saved new external note for user {user_id} ({len(text)} chars)")
         await context.bot.set_message_reaction(
             chat_id=update.effective_chat.id,
             message_id=update.message.message_id,
             reaction=[ReactionTypeEmoji("📌")]
         )
-        logger.info(f"Saved external note for user {user_id} ({len(text)} chars)")
         return
 
     await save_reflection(user_id, text)
