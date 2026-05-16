@@ -10,6 +10,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS reflections (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
+                chat_id INTEGER,
                 audio_file_id TEXT,
                 audio_path TEXT,
                 transcript TEXT NOT NULL DEFAULT '',
@@ -17,11 +18,11 @@ async def init_db():
                 processed INTEGER NOT NULL DEFAULT 0
             )
         """)
-        # Миграция: добавить audio_path если таблица уже существует
-        try:
-            await db.execute("ALTER TABLE reflections ADD COLUMN audio_path TEXT")
-        except Exception:
-            pass
+        for col in ["audio_path TEXT", "chat_id INTEGER"]:
+            try:
+                await db.execute(f"ALTER TABLE reflections ADD COLUMN {col}")
+            except Exception:
+                pass
         await db.execute("""
             CREATE TABLE IF NOT EXISTS summaries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,11 +36,11 @@ async def init_db():
         await db.commit()
 
 
-async def save_reflection(user_id: int, transcript: str = '', audio_file_id: str = None, audio_path: str = None) -> int:
+async def save_reflection(user_id: int, transcript: str = '', audio_file_id: str = None, audio_path: str = None, chat_id: int = None) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO reflections (user_id, audio_file_id, audio_path, transcript) VALUES (?, ?, ?, ?)",
-            (user_id, audio_file_id, audio_path, transcript)
+            "INSERT INTO reflections (user_id, audio_file_id, audio_path, transcript, chat_id) VALUES (?, ?, ?, ?, ?)",
+            (user_id, audio_file_id, audio_path, transcript, chat_id or user_id)
         )
         await db.commit()
         return cursor.lastrowid

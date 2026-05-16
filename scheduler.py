@@ -107,7 +107,8 @@ async def process_queue(bot: Bot):
             pass
 
         reaction = await generate_reaction(transcript)
-        await bot.send_message(chat_id=user_id, text=reaction)
+        reply_chat = r.get("chat_id") or user_id
+        await bot.send_message(chat_id=reply_chat, text=reaction)
         logger.info(f"Queue: done reflection {r['id']}: {transcript[:50]}...")
 
     except Exception as e:

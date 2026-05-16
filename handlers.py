@@ -23,27 +23,33 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voice):
+    try:
+        ensure_audio_dir()
+        file = await context.bot.get_file(voice.file_id)
+        audio_path = os.path.join(AUDIO_TEMP_DIR, f"{voice.file_id}.ogg")
+        await file.download_to_drive(audio_path)
+        logger.info(f"Audio queued from chat {chat_id}: {audio_path}")
+        await save_reflection(user_id, audio_path=audio_path, audio_file_id=voice.file_id, chat_id=chat_id)
+        await context.bot.send_message(chat_id=chat_id, text="👍")
+    except Exception as e:
+        logger.error(f"Error receiving voice: {e}", exc_info=True)
+        await context.bot.send_message(chat_id=chat_id, text="⏳ Не смог сохранить — попробуй ещё раз.")
+
+
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
+    await _queue_voice(update, context, update.effective_chat.id, update.effective_user.id, update.message.voice)
 
-    user_id = update.effective_user.id
-    voice = update.message.voice
-    file_id = voice.file_id
 
-    try:
-        ensure_audio_dir()
-        file = await context.bot.get_file(file_id)
-        audio_path = os.path.join(AUDIO_TEMP_DIR, f"{file_id}.ogg")
-        await file.download_to_drive(audio_path)
-        logger.info(f"Audio queued: {audio_path}")
-
-        await save_reflection(user_id, audio_path=audio_path, audio_file_id=file_id)
-        await update.message.reply_text("👍")
-
-    except Exception as e:
-        logger.error(f"Error receiving voice: {e}", exc_info=True)
-        await update.message.reply_text("⏳ Не смог сохранить — попробуй ещё раз.")
+async def handle_channel_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик голосовых из канала."""
+    post = update.channel_post
+    if not post or not post.voice:
+        return
+    chat_id = post.chat.id
+    await _queue_voice(update, context, chat_id, ALLOWED_USER_ID, post.voice)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
