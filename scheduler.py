@@ -37,9 +37,17 @@ async def send_daily_summary(bot: Bot):
         completed_tasks = await get_today_completed_tasks(user_id)
         notes = await get_today_notes(user_id)
 
-        tg_text = f"📋 *Резюме дня — {today}*\n\n{summary}"
+        def fmt(text: str) -> str:
+            """Конвертирует **bold** → *bold* для Telegram Markdown v1."""
+            import re
+            text = re.sub(r'\*\*(.+?)\*\*', r'*\1*', text)
+            # Убираем лишние пустые строки (3+ → 2)
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            return text
+
+        tg_text = f"📋 *Резюме дня — {today}*\n\n{fmt(summary)}"
         if chronicle:
-            tg_text += f"\n\n*Хроника дня*\n{chronicle}"
+            tg_text += f"\n\n*Хроника дня*\n{fmt(chronicle)}"
         if notes:
             notes_lines = "\n".join(
                 f"📌 {n['created_at'][11:16]} · {n.get('title', '').strip() or 'Заметка'}"
@@ -47,7 +55,13 @@ async def send_daily_summary(bot: Bot):
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"
         if completed_tasks:
-            tg_text += f"\n\n✅ *Сделано сегодня*\n{completed_tasks}"
+            # Убираем префикс TASKS: если есть
+            tasks_clean = completed_tasks.strip()
+            if tasks_clean.upper().startswith("TASKS:"):
+                tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
+            if tasks_clean:
+                lines = "\n".join(f"• {l.strip()}" for l in tasks_clean.split("\n") if l.strip())
+                tg_text += f"\n\n✅ *Сделано сегодня*\n{lines}"
         await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
         if CHANNEL_ID:
             await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
