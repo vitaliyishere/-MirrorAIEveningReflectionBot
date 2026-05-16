@@ -119,14 +119,27 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Длинный структурированный текст → внешняя заметка
     if _is_external_note(text):
-        from database import save_note, get_recent_note, append_to_note
+        from database import save_note, get_recent_note, append_to_note, update_note_title
+        from ai import generate_note_title
         recent = await get_recent_note(user_id, within_minutes=3)
         if recent:
             await append_to_note(recent["id"], text)
-            logger.info(f"Appended to note {recent['id']} for user {user_id} ({len(text)} chars)")
+            # Обновляем заголовок для склеенной заметки
+            try:
+                full_content = recent["content"] + "\n\n" + text
+                title = await generate_note_title(full_content)
+                await update_note_title(recent["id"], title)
+            except Exception:
+                pass
+            logger.info(f"Appended to note {recent['id']} ({len(text)} chars)")
         else:
-            await save_note(user_id, text)
-            logger.info(f"Saved new external note for user {user_id} ({len(text)} chars)")
+            note_id = await save_note(user_id, text)
+            try:
+                title = await generate_note_title(text)
+                await update_note_title(note_id, title)
+            except Exception:
+                pass
+            logger.info(f"Saved new external note ({len(text)} chars)")
         await context.bot.set_message_reaction(
             chat_id=update.effective_chat.id,
             message_id=update.message.message_id,

@@ -41,15 +41,8 @@ async def send_daily_summary(bot: Bot):
         if chronicle:
             tg_text += f"\n\n*Хроника дня*\n{chronicle}"
         if notes:
-            import re as _re
-            def _note_title(n):
-                for line in n['content'].split('\n'):
-                    clean = _re.sub(r'^[#*>\s⚡✨💎🔻👉]+', '', line).strip()
-                    if clean and clean != '---' and not clean.isupper() and len(clean) > 5:
-                        return clean[:60]
-                return 'Заметка'
             notes_lines = "\n".join(
-                f"📌 {n['created_at'][11:16]} · {_note_title(n)}"
+                f"📌 {n['created_at'][11:16]} · {n.get('title', '').strip() or 'Заметка'}"
                 for n in notes
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"

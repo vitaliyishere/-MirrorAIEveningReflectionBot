@@ -33,10 +33,15 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 content TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             )
         """)
+        try:
+            await db.execute("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         await db.execute("""
             CREATE TABLE IF NOT EXISTS completed_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,14 +151,20 @@ async def get_recent_note(user_id: int, within_minutes: int = 3) -> dict | None:
             return dict(row) if row else None
 
 
-async def save_note(user_id: int, content: str) -> int:
+async def save_note(user_id: int, content: str, title: str = "") -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO notes (user_id, content) VALUES (?, ?)",
-            (user_id, content)
+            "INSERT INTO notes (user_id, content, title) VALUES (?, ?, ?)",
+            (user_id, content, title)
         )
         await db.commit()
         return cursor.lastrowid
+
+
+async def update_note_title(note_id: int, title: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE notes SET title = ? WHERE id = ?", (title, note_id))
+        await db.commit()
 
 
 async def append_to_note(note_id: int, content: str):

@@ -147,17 +147,9 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
         # Внешние заметки — каждая в отдельном toggle
         if summary_type == "daily" and notes:
             for note in notes:
-                import re as _re
                 time = note["created_at"][11:16] if len(note.get("created_at", "")) >= 16 else ""
-                # Ищем первую нормальную строку — не пустую, не разделитель, не чистый капс
-                best_line = ""
-                for line in note["content"].split("\n"):
-                    line = line.strip()
-                    clean = _re.sub(r'^[#*>\s⚡✨💎🔻👉]+', '', line).strip()
-                    if clean and clean != "---" and not clean.isupper() and len(clean) > 5:
-                        best_line = clean[:70]
-                        break
-                title = f"📌 {time} · {best_line}" if best_line else f"📌 {time} · Заметка"
+                note_title = note.get("title", "").strip() or "Заметка"
+                title = f"📌 {time} · {note_title}"
                 chunks = [note["content"][i:i+1999] for i in range(0, len(note["content"]), 1999)]
                 children = [{"object": "block", "type": "paragraph", "paragraph": {
                     "rich_text": [{"type": "text", "text": {"content": chunk}, "annotations": {"color": "gray"}}]
