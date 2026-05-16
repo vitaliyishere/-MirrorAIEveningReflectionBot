@@ -15,8 +15,16 @@ async def handle_tasks(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
 
     try:
-        data = await request.json()
-        tasks_text = data.get("tasks", "").strip()
+        content_type = request.content_type or ""
+        if "json" in content_type:
+            data = await request.json()
+            tasks_text = data.get("tasks", "").strip()
+        else:
+            data = await request.post()
+            tasks_text = data.get("tasks", "").strip()
+        if not tasks_text:
+            body = await request.text()
+            tasks_text = body.strip()
         if not tasks_text:
             return web.json_response({"ok": False, "error": "Empty tasks"}, status=400)
 
