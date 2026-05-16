@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 def is_allowed(update: Update) -> bool:
-    return update.effective_user.id == ALLOWED_USER_ID
+    user = update.effective_user
+    if user is None:
+        return False
+    return user.id == ALLOWED_USER_ID
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -53,6 +56,27 @@ async def handle_channel_voice(update: Update, context: ContextTypes.DEFAULT_TYP
     if not post or not post.voice:
         return
     await _queue_voice(update, context, post.chat.id, ALLOWED_USER_ID, post.voice, post.message_id)
+
+
+async def handle_channel_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    post = update.channel_post
+    if not post or not post.text:
+        return
+    text = post.text
+    if _is_external_note(text):
+        from database import save_note, get_recent_note, append_to_note
+        recent = await get_recent_note(ALLOWED_USER_ID, within_minutes=3)
+        if recent:
+            await append_to_note(recent["id"], text)
+            logger.info(f"Appended channel note {recent['id']} ({len(text)} chars)")
+        else:
+            await save_note(ALLOWED_USER_ID, text)
+            logger.info(f"Saved new channel note ({len(text)} chars)")
+        await context.bot.set_message_reaction(
+            chat_id=post.chat.id,
+            message_id=post.message_id,
+            reaction=[ReactionTypeEmoji("📌")]
+        )
 
 
 def _is_external_note(text: str) -> bool:

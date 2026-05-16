@@ -5,7 +5,7 @@ from aiohttp import web
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID
 from database import init_db
-from handlers import handle_start, handle_voice, handle_channel_voice, handle_text, handle_status, handle_today
+from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_text, handle_status, handle_today
 from scheduler import setup_scheduler
 from web_server import create_app
 
@@ -51,6 +51,7 @@ async def main_async():
     tg_app.add_handler(CommandHandler("today", handle_today))
     tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice))
     tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.CHANNEL, handle_channel_voice))
+    tg_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_channel_text))
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     logger.info("Starting bot (polling)...")
