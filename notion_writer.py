@@ -86,6 +86,83 @@ def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
     return blocks
 
 
+def _markdown_to_notion_blocks(text: str) -> list:
+    """Конвертирует markdown текст в список Notion блоков."""
+    import re
+    blocks = []
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Разделитель ---
+        if re.match(r'^-{3,}$', line.strip()):
+            blocks.append({"object": "block", "type": "divider", "divider": {}})
+            i += 1
+            continue
+
+        # Заголовки # ## ###
+        h_match = re.match(r'^(#{1,3})\s+(.+)', line)
+        if h_match:
+            level = len(h_match.group(1))
+            text_content = re.sub(r'\*\*(.+?)\*\*', r'\1', h_match.group(2)).strip()
+            block_type = f"heading_{min(level, 3)}"
+            blocks.append({"object": "block", "type": block_type,
+                block_type: {"rich_text": [{"type": "text", "text": {"content": text_content[:1999]}}]}})
+            i += 1
+            continue
+
+        # Цитаты >
+        if line.startswith("> "):
+            content = line[2:].strip()[:1999]
+            blocks.append({"object": "block", "type": "quote",
+                "quote": {"rich_text": [{"type": "text", "text": {"content": content}}]}})
+            i += 1
+            continue
+
+        # Маркированные списки * или -
+        if re.match(r'^[\*\-] ', line):
+            content = line[2:].strip()[:1999]
+            blocks.append({"object": "block", "type": "bulleted_list_item",
+                "bulleted_list_item": {"rich_text": _parse_inline(content)}})
+            i += 1
+            continue
+
+        # Обычный параграф
+        if line.strip():
+            # Собираем подряд идущие строки в один параграф
+            para_lines = []
+            while i < len(lines) and lines[i].strip() and not re.match(r'^[#>\-\*]|^-{3,}', lines[i]):
+                para_lines.append(lines[i].strip())
+                i += 1
+            content = " ".join(para_lines)
+            # Разбиваем длинный параграф на куски
+            for chunk in [content[j:j+1999] for j in range(0, len(content), 1999)]:
+                blocks.append({"object": "block", "type": "paragraph",
+                    "paragraph": {"rich_text": _parse_inline(chunk)}})
+            continue
+
+        i += 1
+
+    return blocks
+
+
+def _parse_inline(text: str) -> list:
+    """Парсит inline markdown (**bold**) в Notion rich_text."""
+    import re
+    parts = []
+    pattern = r'\*\*(.+?)\*\*'
+    last = 0
+    for m in re.finditer(pattern, text):
+        if m.start() > last:
+            parts.append({"type": "text", "text": {"content": text[last:m.start()]}})
+        parts.append({"type": "text", "text": {"content": m.group(1)}, "annotations": {"bold": True}})
+        last = m.end()
+    if last < len(text):
+        parts.append({"type": "text", "text": {"content": text[last:]}})
+    return parts or [{"type": "text", "text": {"content": text}}]
+
+
 def _make_verbatim_toggle(reflections: list[dict]) -> dict:
     lines = []
     for r in reflections:
@@ -150,10 +227,7 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
                 time = note["created_at"][11:16] if len(note.get("created_at", "")) >= 16 else ""
                 note_title = note.get("title", "").strip() or "Заметка"
                 title = f"📌 {time} · {note_title}"
-                chunks = [note["content"][i:i+1999] for i in range(0, len(note["content"]), 1999)]
-                children = [{"object": "block", "type": "paragraph", "paragraph": {
-                    "rich_text": [{"type": "text", "text": {"content": chunk}, "annotations": {"color": "gray"}}]
-                }} for chunk in chunks]
+                children = _markdown_to_notion_blocks(note["content"])
                 blocks.insert(-1, {
                     "object": "block", "type": "toggle",
                     "toggle": {
