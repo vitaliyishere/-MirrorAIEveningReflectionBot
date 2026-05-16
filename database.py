@@ -23,6 +23,11 @@ async def init_db():
                 await db.execute(f"ALTER TABLE reflections ADD COLUMN {col}")
             except Exception:
                 pass
+        # Миграция notes: добавить updated_at если нет
+        try:
+            await db.execute("ALTER TABLE notes ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))")
+        except Exception:
+            pass
         await db.execute("""
             CREATE TABLE IF NOT EXISTS notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
