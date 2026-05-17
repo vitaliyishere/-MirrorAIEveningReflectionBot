@@ -33,6 +33,12 @@ async def send_daily_summary(bot: Bot):
         r for r in reflections
         if r.get("audio_file_id") or len(r.get("transcript", "")) < 500
     ]
+    if not real_reflections:
+        await bot.send_message(
+            chat_id=user_id,
+            text="Сегодня ты ничего не надиктовал голосом — только заметки. Нечего резюмировать."
+        )
+        return
     transcripts = [r["transcript"] for r in real_reflections]
     try:
         summary = await generate_daily_summary(transcripts)

@@ -109,13 +109,13 @@ def _markdown_to_notion_blocks(text: str) -> list:
             text_content = re.sub(r'\*\*(.+?)\*\*', r'\1', h_match.group(2)).strip()
             block_type = f"heading_{min(level, 3)}"
             blocks.append({"object": "block", "type": block_type,
-                block_type: {"rich_text": [{"type": "text", "text": {"content": text_content[:1999]}}]}})
+                block_type: {"rich_text": [{"type": "text", "text": {"content": text_content[:1900]}}]}})
             i += 1
             continue
 
         # Цитаты >
         if line.startswith("> "):
-            content = line[2:].strip()[:1999]
+            content = line[2:].strip()[:1900]
             blocks.append({"object": "block", "type": "quote",
                 "quote": {"rich_text": [{"type": "text", "text": {"content": content}}]}})
             i += 1
@@ -123,7 +123,7 @@ def _markdown_to_notion_blocks(text: str) -> list:
 
         # Маркированные списки * или -
         if re.match(r'^[\*\-] ', line):
-            content = line[2:].strip()[:1999]
+            content = line[2:].strip()[:1900]
             blocks.append({"object": "block", "type": "bulleted_list_item",
                 "bulleted_list_item": {"rich_text": _parse_inline(content)}})
             i += 1
@@ -138,7 +138,7 @@ def _markdown_to_notion_blocks(text: str) -> list:
                 i += 1
             content = " ".join(para_lines)
             # Разбиваем длинный параграф на куски
-            for chunk in [content[j:j+1999] for j in range(0, len(content), 1999)]:
+            for chunk in [content[j:j+1900] for j in range(0, len(content), 1900)]:
                 blocks.append({"object": "block", "type": "paragraph",
                     "paragraph": {"rich_text": _parse_inline(chunk)}})
             continue
@@ -174,7 +174,7 @@ def _make_verbatim_toggle(reflections: list[dict]) -> dict:
 
     raw_text = "\n\n".join(lines)
     # Notion paragraph max 2000 chars — разбиваем на чанки
-    chunks = [raw_text[i:i+1999] for i in range(0, len(raw_text), 1999)]
+    chunks = [raw_text[i:i+1900] for i in range(0, len(raw_text), 1900)]
 
     children = [
         {
