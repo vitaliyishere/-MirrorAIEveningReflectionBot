@@ -31,21 +31,11 @@ async def run_web_server(stop_event: asyncio.Event, bot=None):
 
 async def queue_loop(bot):
     """Простой asyncio-цикл для обработки очереди голосовых."""
-    logger.info("Queue loop started, first tick in 60s (debug)")
+    logger.info("Queue loop started")
     _running = False
     while True:
-        try:
-            logger.info("Queue loop: sleeping...")
-            await asyncio.sleep(60)  # временно 60s для диагностики
-            logger.info("Queue loop: sleep done, checking queue")
-        except asyncio.CancelledError:
-            logger.warning("Queue loop: CancelledError during sleep!")
-            return
-        except Exception as e:
-            logger.error(f"Queue loop sleep error: {e}")
-            continue
+        await asyncio.sleep(300)  # 5 минут
         if _running:
-            logger.info("Queue loop: предыдущий тик ещё не завершён, пропускаем")
             continue
         _running = True
         try:
