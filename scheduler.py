@@ -16,13 +16,14 @@ from notion_writer import save_to_notion
 logger = logging.getLogger(__name__)
 
 
-async def send_daily_summary(bot: Bot):
+async def send_daily_summary(bot: Bot, reply_to: int = None):
     user_id = ALLOWED_USER_ID
+    reply_chat = reply_to or user_id
     reflections = await get_today_reflections(user_id)
 
     if not reflections:
         await bot.send_message(
-            chat_id=user_id,
+            chat_id=reply_chat,
             text="Сегодня ты ничего не рассказывал, и мне нечего тебе подсветить."
         )
         return
@@ -35,7 +36,7 @@ async def send_daily_summary(bot: Bot):
     ]
     if not real_reflections:
         await bot.send_message(
-            chat_id=user_id,
+            chat_id=reply_chat,
             text="Сегодня ты ничего не надиктовал голосом — только заметки. Нечего резюмировать."
         )
         return
@@ -84,15 +85,16 @@ async def send_daily_summary(bot: Bot):
                 for n in notes
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"
-        await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
-        if CHANNEL_ID:
+        await bot.send_message(chat_id=reply_chat, text=tg_text, parse_mode="Markdown")
+        # Автоматический репорт по расписанию — дублируем в канал если запрос был из лички
+        if not reply_to and CHANNEL_ID:
             await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood)
-        logger.info(f"Daily summary sent to {user_id}")
+        logger.info(f"Daily summary sent to {reply_chat}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")
         await bot.send_message(
-            chat_id=user_id,
+            chat_id=reply_chat,
             text="⚠️ Не удалось сгенерировать резюме — попробую позже."
         )
 

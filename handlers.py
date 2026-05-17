@@ -170,12 +170,13 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("⏳ Генерирую резюме...")
     from scheduler import send_daily_summary
-    await send_daily_summary(context.bot)
+    await send_daily_summary(context.bot, reply_to=update.effective_chat.id)
 
 
 async def handle_channel_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from scheduler import send_daily_summary
-    await send_daily_summary(context.bot)
+    chat_id = update.channel_post.chat.id
+    await send_daily_summary(context.bot, reply_to=chat_id)
 
 
 async def handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
