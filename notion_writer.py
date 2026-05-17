@@ -203,62 +203,100 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
 
     try:
         client = AsyncClient(auth=NOTION_TOKEN)
-        blocks = _parse_summary_to_blocks(summary, summary_type, mood=mood)
 
-        # Хроника дня
-        if summary_type == "daily" and chronicle:
-            blocks.insert(-1, {
-                "object": "block",
-                "type": "heading_3",
-                "heading_3": {"rich_text": [{"type": "text", "text": {"content": "Хроника дня"}, "annotations": {"bold": True}}]}
+        if summary_type == "daily":
+            # Строим блоки в нужном порядке вручную
+            blocks = []
+
+            # Заголовок дня
+            today = date.today().strftime("%d.%m.%Y")
+            emoji = _pick_emoji(today, DAY_EMOJIS)
+            title = f"{emoji} {today}" + (f" · {mood}" if mood else "")
+            blocks.append({
+                "object": "block", "type": "heading_2",
+                "heading_2": {"rich_text": [{"type": "text", "text": {"content": title}}]}
             })
-            for line in chronicle.strip().split("\n"):
+
+            # 1. Сделано сегодня
+            if completed_tasks:
+                tasks_clean = completed_tasks.strip()
+                if tasks_clean.upper().startswith("TASKS:"):
+                    tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
+                if tasks_clean:
+                    blocks.append({
+                        "object": "block", "type": "heading_3",
+                        "heading_3": {"rich_text": [{"type": "text", "text": {"content": "✅ Сделано сегодня"}, "annotations": {"bold": True}}]}
+                    })
+                    for line in tasks_clean.strip().split("\n"):
+                        line = line.strip().lstrip("•- ")
+                        if line:
+                            blocks.append({
+                                "object": "block", "type": "to_do",
+                                "to_do": {"rich_text": [{"type": "text", "text": {"content": line}}], "checked": True}
+                            })
+
+            # 2. Темы дня / Ключевые идеи / Взгляд со стороны (из summary)
+            for line in summary.strip().split("\n"):
                 line = line.strip()
-                if line:
-                    blocks.insert(-1, {
-                        "object": "block",
-                        "type": "paragraph",
-                        "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]}
+                if not line:
+                    continue
+                import re
+                heading_match = re.match(r'^\*\*(.+?)\*\*:?\s*$', line)
+                if heading_match:
+                    blocks.append({
+                        "object": "block", "type": "heading_3",
+                        "heading_3": {"rich_text": [{"type": "text", "text": {"content": heading_match.group(1)}, "annotations": {"bold": True}}]}
+                    })
+                elif line.startswith("- ") or line.startswith("→ "):
+                    blocks.append({
+                        "object": "block", "type": "bulleted_list_item",
+                        "bulleted_list_item": {"rich_text": _parse_inline(line[2:])}
+                    })
+                else:
+                    blocks.append({
+                        "object": "block", "type": "paragraph",
+                        "paragraph": {"rich_text": _parse_inline(line)}
                     })
 
-        # Внешние заметки — каждая в отдельном toggle
-        if summary_type == "daily" and notes:
-            for note in notes:
-                time = note["created_at"][11:16] if len(note.get("created_at", "")) >= 16 else ""
-                note_title = note.get("title", "").strip() or "Заметка"
-                title = f"📌 {time} · {note_title}"
-                children = _markdown_to_notion_blocks(note["content"])
-                blocks.insert(-1, {
-                    "object": "block", "type": "toggle",
-                    "toggle": {
-                        "rich_text": [{"type": "text", "text": {"content": title}, "annotations": {"bold": True}}],
-                        "children": children
-                    }
+            # 3. Хроника дня
+            if chronicle:
+                blocks.append({
+                    "object": "block", "type": "heading_3",
+                    "heading_3": {"rich_text": [{"type": "text", "text": {"content": "Хроника дня"}, "annotations": {"bold": True}}]}
                 })
+                for line in chronicle.strip().split("\n"):
+                    line = line.strip()
+                    if line:
+                        blocks.append({
+                            "object": "block", "type": "paragraph",
+                            "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]}
+                        })
 
-        # Выполненные задачи из Reminders
-        if summary_type == "daily" and completed_tasks:
-            blocks.insert(-1, {
-                "object": "block",
-                "type": "heading_3",
-                "heading_3": {"rich_text": [{"type": "text", "text": {"content": "✅ Сделано сегодня"}, "annotations": {"bold": True}}]}
-            })
-            for line in completed_tasks.strip().split("\n"):
-                line = line.strip().lstrip("•- ")
-                if line:
-                    blocks.insert(-1, {
-                        "object": "block",
-                        "type": "to_do",
-                        "to_do": {
-                            "rich_text": [{"type": "text", "text": {"content": line}}],
-                            "checked": True
+            # 4. Toggle: дословно
+            if reflections:
+                blocks.append(_make_verbatim_toggle(reflections))
+
+            # 5. Toggles: внешние заметки
+            if notes:
+                for note in notes:
+                    time = note["created_at"][11:16] if len(note.get("created_at", "")) >= 16 else ""
+                    note_title = note.get("title", "").strip() or "Заметка"
+                    title = f"📌 {time} · {note_title}"
+                    children = _markdown_to_notion_blocks(note["content"])
+                    blocks.append({
+                        "object": "block", "type": "toggle",
+                        "toggle": {
+                            "rich_text": [{"type": "text", "text": {"content": title}, "annotations": {"bold": True}}],
+                            "children": children
                         }
                     })
 
-        # Toggle с сырыми транскрипциями
-        if summary_type == "daily" and reflections:
-            toggle = _make_verbatim_toggle(reflections)
-            blocks.insert(-1, toggle)
+            # Разделитель
+            blocks.append({"object": "block", "type": "divider", "divider": {}})
+
+        else:
+            # Недельный — старая логика
+            blocks = _parse_summary_to_blocks(summary, summary_type, mood=mood)
 
         await client.blocks.children.append(
             block_id=NOTION_PAGE_ID,

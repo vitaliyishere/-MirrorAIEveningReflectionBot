@@ -46,23 +46,32 @@ async def send_daily_summary(bot: Bot):
             text = re.sub(r'\n{3,}', '\n\n', text)
             return text
 
-        tg_text = f"📋 *Резюме дня — {today}* · {mood}\n\n{fmt(summary)}"
+        # Заголовок
+        tg_text = f"📋 *Резюме дня — {today}* · {mood}\n\n"
+
+        # 1. Сделано сегодня — первым
+        if completed_tasks:
+            tasks_clean = completed_tasks.strip()
+            if tasks_clean.upper().startswith("TASKS:"):
+                tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
+            if tasks_clean:
+                lines = "\n".join(f"• {l.strip()}" for l in tasks_clean.split("\n") if l.strip())
+                tg_text += f"✅ *Сделано сегодня*\n{lines}\n\n"
+
+        # 2. Темы дня / Ключевые идеи / Взгляд со стороны (из summary)
+        tg_text += fmt(summary)
+
+        # 3. Хроника дня
         if chronicle:
             tg_text += f"\n\n*Хроника дня*\n{fmt(chronicle)}"
+
+        # 4. Заметки (только заголовки — полный текст в Notion тогглах)
         if notes:
             notes_lines = "\n".join(
                 f"📌 {n['created_at'][11:16]} · {n.get('title', '').strip() or 'Заметка'}"
                 for n in notes
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"
-        if completed_tasks:
-            # Убираем префикс TASKS: если есть
-            tasks_clean = completed_tasks.strip()
-            if tasks_clean.upper().startswith("TASKS:"):
-                tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
-            if tasks_clean:
-                lines = "\n".join(f"• {l.strip()}" for l in tasks_clean.split("\n") if l.strip())
-                tg_text += f"\n\n✅ *Сделано сегодня*\n{lines}"
         await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
         if CHANNEL_ID:
             await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
