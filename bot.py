@@ -56,7 +56,7 @@ def main():
         tg_app.add_handler(CommandHandler("start", handle_start))
         tg_app.add_handler(CommandHandler("status", handle_status))
         tg_app.add_handler(CommandHandler("today", handle_today))
-        tg_app.add_handler(CommandHandler("summary", handle_summary))
+        tg_app.add_handler(CommandHandler("summary", handle_summary, filters=filters.ChatType.PRIVATE))
         tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice))
         tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.CHANNEL, handle_channel_voice))
         tg_app.add_handler(MessageHandler(filters.Regex(r'^/summary') & filters.ChatType.CHANNEL, handle_channel_summary))
