@@ -2,7 +2,7 @@ import os
 import logging
 from datetime import date
 from aiohttp import web
-from config import ALLOWED_USER_ID
+from config import ALLOWED_USER_ID, CHANNEL_ID
 from database import save_completed_tasks
 
 logger = logging.getLogger(__name__)
@@ -61,11 +61,13 @@ async def handle_deploy_webhook(request: web.Request) -> web.Response:
 
         import aiohttp
         async with aiohttp.ClientSession() as session:
-            await session.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": ALLOWED_USER_ID, "text": text}
-            )
-        logger.info(f"Deploy webhook: {status} → notified user")
+            targets = [ALLOWED_USER_ID] + ([CHANNEL_ID] if CHANNEL_ID else [])
+            for chat_id in targets:
+                await session.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text}
+                )
+        logger.info(f"Deploy webhook: {status} → notified {len(targets)} targets")
         return web.json_response({"ok": True})
     except Exception as e:
         logger.error(f"Deploy webhook error: {e}")
