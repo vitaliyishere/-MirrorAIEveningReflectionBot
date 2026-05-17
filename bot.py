@@ -29,6 +29,23 @@ async def run_web_server(stop_event: asyncio.Event, bot=None):
     await runner.cleanup()
 
 
+async def queue_loop(bot):
+    logger.info("Queue loop started (temporary until worker service is stable)")
+    _running = False
+    while True:
+        await asyncio.sleep(300)
+        if _running:
+            continue
+        _running = True
+        try:
+            from scheduler import process_queue
+            await process_queue(bot)
+        except Exception as e:
+            logger.error(f"Queue loop error: {e}")
+        finally:
+            _running = False
+
+
 async def post_init(application: Application):
     scheduler = setup_scheduler(application.bot)
     scheduler.start()
@@ -75,6 +92,7 @@ def main():
                 drop_pending_updates=False,
                 allowed_updates=["message", "channel_post"]
             )
+            _queue_task = asyncio.create_task(queue_loop(tg_app.bot))
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
