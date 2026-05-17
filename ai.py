@@ -61,16 +61,20 @@ async def generate_day_mood(transcripts: list[str]) -> str:
         model=GROQ_MODEL,
         messages=[
             {"role": "system", "content": (
-                "Определи главное настроение или энергию дня одной короткой фразой: эмодзи + 1-2 слова. "
-                "Только фраза, больше ничего. "
-                "Примеры: 🔥 Разгон, 🧘 Покой, 💡 Озарение, 🚀 Запуск, ⚡ Поток, 🌊 Погружение, 🎯 Фокус, 🌀 Турбулентность, ✨ Лёгкость"
+                "Одна фраза: эмодзи + максимум 2 слова. Больше ничего — ни точек, ни запятых, ни второй фразы.\n"
+                "Примеры (точно в таком формате):\n"
+                "🔥 Разгон\n🧘 Покой\n💡 Озарение\n🚀 Запуск\n⚡ Поток\n🌊 Погружение\n🎯 Фокус\n✨ Лёгкость"
             )},
             {"role": "user", "content": combined}
         ],
-        max_tokens=15,
-        temperature=1.1
+        max_tokens=10,
+        temperature=1.0
     )
-    return response.choices[0].message.content.strip()
+    # Берём только первую строку на случай если модель выдала больше
+    mood = response.choices[0].message.content.strip().split('\n')[0].strip()
+    # Обрезаем до эмодзи + 2 слова максимум
+    words = mood.split()
+    return ' '.join(words[:3])
 
 
 async def generate_note_title(content: str) -> str:
