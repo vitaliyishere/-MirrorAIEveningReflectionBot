@@ -105,6 +105,21 @@ async def update_transcript(reflection_id: int, transcript: str):
         await db.commit()
 
 
+async def reset_stuck_audio(user_id: int):
+    """Сбрасывает записи с audio_file_id но без транскрипции обратно в очередь."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            """UPDATE reflections SET processed = 0
+               WHERE user_id = ? AND audio_file_id IS NOT NULL
+               AND (transcript IS NULL OR transcript = '')""",
+            (user_id,)
+        )
+        await db.commit()
+        if result.rowcount > 0:
+            import logging
+            logging.getLogger(__name__).info(f"Reset {result.rowcount} stuck audio reflections to queue")
+
+
 async def get_one_unprocessed(user_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

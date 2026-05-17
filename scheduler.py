@@ -146,8 +146,23 @@ async def process_queue(bot: Bot):
 
     audio_path = r.get("audio_path")
     if not audio_path or not os.path.exists(audio_path):
-        await mark_processed(r["id"])
-        return
+        # Пробуем перекачать из Telegram по file_id
+        audio_file_id = r.get("audio_file_id")
+        if audio_file_id:
+            try:
+                from ai import ensure_audio_dir, AUDIO_TEMP_DIR
+                ensure_audio_dir()
+                tg_file = await bot.get_file(audio_file_id)
+                audio_path = os.path.join(AUDIO_TEMP_DIR, f"{audio_file_id}.ogg")
+                await tg_file.download_to_drive(audio_path)
+                logger.info(f"Queue: re-downloaded audio for reflection {r['id']}")
+            except Exception as e:
+                logger.error(f"Queue: can't re-download {r['id']}: {e}")
+                await mark_processed(r["id"])
+                return
+        else:
+            await mark_processed(r["id"])
+            return
 
     try:
         logger.info(f"Queue: transcribing {audio_path}")

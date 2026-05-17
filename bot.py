@@ -4,7 +4,7 @@ import asyncio
 from aiohttp import web
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID
-from database import init_db
+from database import init_db, reset_stuck_audio
 from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_text, handle_status, handle_today, handle_summary, handle_channel_summary
 from scheduler import setup_scheduler
 from web_server import create_app
@@ -43,6 +43,8 @@ def main():
     async def run():
         await init_db()
         logger.info("Database initialized")
+        await reset_stuck_audio(ALLOWED_USER_ID)
+
 
         stop_event = asyncio.Event()
 
