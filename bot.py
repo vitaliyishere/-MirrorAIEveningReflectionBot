@@ -30,10 +30,13 @@ async def run_web_server(stop_event: asyncio.Event, bot=None):
 
 
 async def queue_loop(bot):
-    logger.info("Queue loop started (temporary until worker service is stable)")
+    """Воркер очереди голосовых. Запускается внутри bot.py — отдельный Railway сервис
+    невозможен т.к. SQLite volume нельзя шарить между контейнерами (нет volumeInstanceCreate в API).
+    При деплое бота: reset_stuck_audio на старте возвращает незавершённые голосовые в очередь."""
+    logger.info("Queue worker started (30s interval)")
     _running = False
     while True:
-        await asyncio.sleep(300)
+        await asyncio.sleep(30)
         if _running:
             continue
         _running = True
@@ -41,7 +44,7 @@ async def queue_loop(bot):
             from scheduler import process_queue
             await process_queue(bot)
         except Exception as e:
-            logger.error(f"Queue loop error: {e}")
+            logger.error(f"Queue worker error: {e}", exc_info=True)
         finally:
             _running = False
 
