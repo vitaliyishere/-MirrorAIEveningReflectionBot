@@ -243,12 +243,20 @@ async def generate_daily_summary(transcripts: list[str]) -> str:
 
 
 async def generate_weekly_summary(transcripts: list[dict]) -> str:
+    from groq import AsyncGroq
     lines = [f"[{r['created_at'][:10]}] {r['transcript']}" for r in transcripts]
     combined = "\n\n---\n\n".join(lines)
-    return await groq_generate(
-        prompt=f"Транскрипции за неделю:\n\n{combined}",
-        system=WEEKLY_SYSTEM_PROMPT
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": WEEKLY_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Транскрипции за неделю:\n\n{combined}"}
+        ],
+        max_tokens=1500,
+        temperature=0.7
     )
+    return response.choices[0].message.content
 
 
 def ensure_audio_dir():

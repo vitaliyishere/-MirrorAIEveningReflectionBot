@@ -121,6 +121,14 @@ async def send_daily_reminder(bot: Bot):
 
 
 async def send_weekly_summary(bot: Bot):
+    import re
+
+    def fmt(text: str) -> str:
+        """Конвертирует **bold** → *bold* для Telegram Markdown v1."""
+        text = re.sub(r'\*\*(.+?)\*\*', r'*\1*', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text
+
     user_id = ALLOWED_USER_ID
     reflections = await get_week_reflections(user_id)
 
@@ -132,18 +140,22 @@ async def send_weekly_summary(bot: Bot):
         return
 
     try:
+        await bot.send_message(chat_id=user_id, text="⏳ Генерирую резюме недели...")
         summary = await generate_weekly_summary(reflections)
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"🗓 *Резюме недели — {today}*\n\n{summary}",
-            parse_mode="Markdown"
-        )
+        tg_text = f"🗓 *Резюме недели — {today}*\n\n{fmt(summary)}"
+        await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
+        if CHANNEL_ID:
+            await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
         await save_to_notion(summary, "weekly")
         logger.info(f"Weekly summary sent to {user_id}")
     except Exception as e:
-        logger.error(f"Error generating weekly summary: {e}")
+        logger.error(f"Error generating weekly summary: {e}", exc_info=True)
+        await bot.send_message(
+            chat_id=user_id,
+            text="⚠️ Не удалось сгенерировать резюме недели — попробуй ещё раз."
+        )
 
 
 async def _update_queue_status(bot: Bot, remaining: int, chat_ids: list[int] = None):
