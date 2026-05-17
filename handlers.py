@@ -173,6 +173,11 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_daily_summary(context.bot)
 
 
+async def handle_channel_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from scheduler import send_daily_summary
+    await send_daily_summary(context.bot)
+
+
 async def handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
