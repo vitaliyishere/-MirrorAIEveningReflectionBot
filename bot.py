@@ -30,15 +30,22 @@ async def run_web_server(stop_event: asyncio.Event, bot=None):
 
 
 async def queue_loop(bot):
-    """Простой asyncio-цикл вместо APScheduler interval job — надёжнее в PTB v21."""
+    """Простой asyncio-цикл для обработки очереди голосовых."""
     logger.info("Queue loop started")
+    _running = False
     while True:
         await asyncio.sleep(300)  # 5 минут
+        if _running:
+            logger.info("Queue loop: предыдущий тик ещё не завершён, пропускаем")
+            continue
+        _running = True
         try:
             from scheduler import process_queue
             await process_queue(bot)
         except Exception as e:
             logger.error(f"Queue loop error: {e}")
+        finally:
+            _running = False
 
 
 async def post_init(application: Application):
