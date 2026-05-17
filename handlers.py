@@ -84,11 +84,13 @@ def _is_external_note(text: str) -> bool:
     if len(text) < 500:
         return False
     structure_patterns = [
-        r'^#{1,3} ',       # заголовки markdown
-        r'^---+$',         # разделители
-        r'\*\*.+?\*\*',    # жирный текст
-        r'^\* ',           # маркированные списки со звёздочкой
-        r'^> ',            # цитаты
+        r'^#{1,3} ',                        # заголовки markdown
+        r'^---+$',                          # разделители ---
+        r'^⸻+$',                           # разделители ⸻ (em dash)
+        r'\*\*.+?\*\*',                     # жирный текст
+        r'^\* ',                            # маркированные списки со звёздочкой
+        r'^> ',                             # цитаты
+        r'^[⚡✨💎🔻👉❌✅💡🎯🌟🧘🚀❤️💰😴🪞⸻]',  # строки с emoji-заголовками
     ]
     matches = sum(1 for p in structure_patterns if re.search(p, text, re.MULTILINE))
     return matches >= 2
