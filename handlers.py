@@ -150,24 +150,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Проверяем на Spotify ссылку
-    from spotify import extract_spotify_url, get_track_info, parse_music_from_text
+    # Проверяем на музыку: Spotify ссылка или ключевые слова
+    from spotify import extract_spotify_url, get_track_info, parse_music_from_text, is_music_text
     spotify_url = extract_spotify_url(text)
+    track_info = None
+
     if spotify_url:
         track_info = await get_track_info(spotify_url)
         if not track_info:
-            # Пробуем распознать из текста
             track_info = parse_music_from_text(text)
-        if track_info:
-            note = re.sub(r'https?://\S+', '', text).strip()
-            await save_music(user_id, track_info["track"], track_info.get("artist", ""), spotify_url, note)
-            await context.bot.set_message_reaction(
-                chat_id=update.effective_chat.id,
-                message_id=update.message.message_id,
-                reaction=[ReactionTypeEmoji("🎵")]
-            )
-            logger.info(f"Saved music: {track_info['track']} — {track_info.get('artist', '')}")
-            return
+    elif is_music_text(text):
+        track_info = parse_music_from_text(text)
+
+    if track_info:
+        note = re.sub(r'https?://\S+', '', text).strip()
+        await save_music(user_id, track_info["track"], track_info.get("artist", ""), spotify_url or "", note)
+        await context.bot.set_message_reaction(
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            reaction=[ReactionTypeEmoji("🎵")]
+        )
+        logger.info(f"Saved music: {track_info['track']} — {track_info.get('artist', '')}")
+        return
 
     await save_reflection(user_id, text)
     logger.info(f"Saved text reflection for user {user_id}")

@@ -53,16 +53,30 @@ async def get_track_info(spotify_url: str) -> dict | None:
     return None
 
 
+MUSIC_KEYWORDS = ["музыка", "песня", "трек", "слушаю", "играет", "звучит", "song", "track", "music"]
+
+
+def is_music_text(text: str) -> bool:
+    """Проверяет содержит ли текст музыкальные ключевые слова."""
+    return any(kw in text.lower() for kw in MUSIC_KEYWORDS)
+
+
 def parse_music_from_text(text: str) -> dict | None:
-    """Пробует распознать 'Исполнитель - Трек' или 'Трек - Исполнитель' из текста."""
-    # Ищем паттерн: слова — дефис — слова (без Spotify ссылки)
+    """Пробует распознать 'Трек - Исполнитель' из текста."""
     clean = re.sub(SPOTIFY_TRACK_RE, '', text).strip()
-    # Ищем явный паттерн "название - исполнитель"
-    match = re.search(r'([A-Za-zА-Яа-яёЁ].+?)\s*[-–—]\s*([A-Za-zА-Яа-яёЁ].+)', clean)
+    # Убираем ключевые слова из начала: "музыка: Track - Artist"
+    clean = re.sub(
+        r'^(?:музыка|песня|трек|слушаю|играет|звучит|song|track|music)[:\s]+',
+        '', clean, flags=re.IGNORECASE
+    ).strip()
+    # Ищем паттерн "часть1 - часть2"
+    match = re.search(r'([A-Za-zЀ-ӿ0-9"\'«»].+?)\s*[-–—]\s*([A-Za-zЀ-ӿ0-9"\'«»].+)', clean)
     if match:
         part1 = match.group(1).strip()
         part2 = match.group(2).strip()
-        # Отсекаем слишком длинные части (скорее всего не название трека)
-        if len(part1) < 60 and len(part2) < 60:
+        if len(part1) < 80 and len(part2) < 80:
             return {"track": part1, "artist": part2}
+    # Если дефиса нет — весь текст как название
+    if clean and len(clean) < 100:
+        return {"track": clean, "artist": ""}
     return None
