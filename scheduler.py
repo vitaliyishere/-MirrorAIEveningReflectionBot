@@ -150,6 +150,7 @@ async def process_queue(bot: Bot):
     """Берёт один файл из очереди, транскрибирует и отправляет реакцию."""
     user_id = ALLOWED_USER_ID
     r = await get_one_unprocessed(user_id)
+    logger.info(f"Queue tick: {'found id=' + str(r['id']) if r else 'empty'}")
     if not r:
         return
 
