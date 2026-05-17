@@ -75,7 +75,7 @@ async def handle_channel_text(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.set_message_reaction(
             chat_id=post.chat.id,
             message_id=post.message_id,
-            reaction=[ReactionTypeEmoji("📌")]
+            reaction=[ReactionTypeEmoji("✍️")]
         )
 
 
@@ -145,7 +145,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.set_message_reaction(
             chat_id=update.effective_chat.id,
             message_id=update.message.message_id,
-            reaction=[ReactionTypeEmoji("📌")]
+            reaction=[ReactionTypeEmoji("✍️")]
         )
         return
 
