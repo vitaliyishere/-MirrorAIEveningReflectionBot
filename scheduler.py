@@ -30,9 +30,12 @@ async def send_daily_summary(bot: Bot):
     transcripts = [r["transcript"] for r in reflections]
     try:
         summary = await generate_daily_summary(transcripts)
-        # Хроника только из голосовых — не из внешних заметок
-        voice_reflections = [r for r in reflections if r.get("audio_file_id")]
-        chronicle = await generate_chronicle(voice_reflections)
+        # Хроника: голосовые + короткий текст руками, без больших внешних заметок
+        chronicle_reflections = [
+            r for r in reflections
+            if r.get("audio_file_id") or len(r.get("transcript", "")) < 500
+        ]
+        chronicle = await generate_chronicle(chronicle_reflections)
         mood = await generate_day_mood(transcripts)
         today = date.today().isoformat()
         await save_summary(user_id, "daily", summary, today)
