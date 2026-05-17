@@ -16,12 +16,12 @@ def _pick_emoji(text: str, pool: list) -> str:
     return pool[hash(text) % len(pool)]
 
 
-def _parse_summary_to_blocks(summary: str, summary_type: str) -> list:
+def _parse_summary_to_blocks(summary: str, summary_type: str, mood: str = None) -> list:
     today = date.today().strftime("%d.%m.%Y")
     emoji = _pick_emoji(today, DAY_EMOJIS if summary_type == "daily" else WEEK_EMOJIS)
 
     if summary_type == "daily":
-        title = f"{emoji} {today}"
+        title = f"{emoji} {today}" + (f" · {mood}" if mood else "")
     else:
         title = f"🗓️ Неделя до {today}"
 
@@ -196,14 +196,14 @@ def _make_verbatim_toggle(reflections: list[dict]) -> dict:
     }
 
 
-async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None):
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None, mood: str = None):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
 
     try:
         client = AsyncClient(auth=NOTION_TOKEN)
-        blocks = _parse_summary_to_blocks(summary, summary_type)
+        blocks = _parse_summary_to_blocks(summary, summary_type, mood=mood)
 
         # Хроника дня
         if summary_type == "daily" and chronicle:

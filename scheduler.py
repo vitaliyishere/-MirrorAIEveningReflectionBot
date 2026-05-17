@@ -10,7 +10,7 @@ from config import (
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
 from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes
-from ai import generate_daily_summary, generate_weekly_summary, generate_chronicle, transcribe_audio, generate_reaction
+from ai import generate_daily_summary, generate_weekly_summary, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ async def send_daily_summary(bot: Bot):
     try:
         summary = await generate_daily_summary(transcripts)
         chronicle = await generate_chronicle(reflections)
+        mood = await generate_day_mood(transcripts)
         today = date.today().isoformat()
         await save_summary(user_id, "daily", summary, today)
 
@@ -45,7 +46,7 @@ async def send_daily_summary(bot: Bot):
             text = re.sub(r'\n{3,}', '\n\n', text)
             return text
 
-        tg_text = f"📋 *Резюме дня — {today}*\n\n{fmt(summary)}"
+        tg_text = f"📋 *Резюме дня — {today}* · {mood}\n\n{fmt(summary)}"
         if chronicle:
             tg_text += f"\n\n*Хроника дня*\n{fmt(chronicle)}"
         if notes:
@@ -65,7 +66,7 @@ async def send_daily_summary(bot: Bot):
         await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
         if CHANNEL_ID:
             await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
-        await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes)
+        await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood)
         logger.info(f"Daily summary sent to {user_id}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")
