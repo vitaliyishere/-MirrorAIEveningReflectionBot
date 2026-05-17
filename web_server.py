@@ -40,9 +40,25 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "status": "alive"})
 
 
+async def handle_run_queue(request: web.Request) -> web.Response:
+    """Debug: вручную запускает process_queue один раз."""
+    secret = request.headers.get("X-Secret", "")
+    if secret != API_SECRET:
+        return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+    try:
+        from scheduler import process_queue
+        bot = request.app["bot"]
+        await process_queue(bot)
+        return web.json_response({"ok": True, "msg": "queue tick done"})
+    except Exception as e:
+        logger.error(f"Manual queue error: {e}", exc_info=True)
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
 
-def create_app() -> web.Application:
+
+def create_app(bot=None) -> web.Application:
     app = web.Application()
+    app["bot"] = bot
     app.router.add_post("/tasks", handle_tasks)
     app.router.add_get("/health", handle_health)
+    app.router.add_post("/admin/queue", handle_run_queue)
     return app

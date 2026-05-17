@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 PORT = int(os.getenv("PORT", 8080))
 
 
-async def run_web_server(stop_event: asyncio.Event):
-    app = create_app()
+async def run_web_server(stop_event: asyncio.Event, bot=None):
+    app = create_app(bot)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
@@ -66,7 +66,7 @@ def main():
         tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
         # Запускаем веб-сервер и бот параллельно
-        web_task = asyncio.create_task(run_web_server(stop_event))
+        web_task = asyncio.create_task(run_web_server(stop_event, tg_app.bot))
 
         logger.info("Starting bot (polling)...")
         async with tg_app:
