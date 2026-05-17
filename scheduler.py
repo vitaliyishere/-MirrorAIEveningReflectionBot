@@ -9,7 +9,7 @@ from config import (
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
-from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music
+from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting
 from ai import generate_daily_summary, generate_weekly_summary, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
 from notion_writer import save_to_notion
 
@@ -146,13 +146,48 @@ async def send_weekly_summary(bot: Bot):
         logger.error(f"Error generating weekly summary: {e}")
 
 
+async def _update_queue_status(bot: Bot, remaining: int):
+    """Отправляет/редактирует/удаляет статус-сообщение очереди."""
+    targets = [ALLOWED_USER_ID] + ([CHANNEL_ID] if CHANNEL_ID else [])
+
+    async def _handle(chat_id: int, key: str):
+        stored = await get_setting(key)
+        msg_id = int(stored) if stored else None
+        if remaining == 0:
+            if msg_id:
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                except Exception:
+                    pass
+                await set_setting(key, "")
+            return
+        text = f"⚙️ Обрабатываю голосовые: осталось {remaining}..."
+        if msg_id:
+            try:
+                await bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=text)
+                return
+            except Exception:
+                pass
+        msg = await bot.send_message(chat_id=chat_id, text=text)
+        await set_setting(key, str(msg.message_id))
+
+    for chat_id in targets:
+        try:
+            await _handle(chat_id, f"queue_status_msg_{chat_id}")
+        except Exception as e:
+            logger.error(f"Queue status error for {chat_id}: {e}")
+
+
 async def process_queue(bot: Bot):
     """Берёт один файл из очереди, транскрибирует и отправляет реакцию."""
     user_id = ALLOWED_USER_ID
+    remaining_before = len(await get_unprocessed_reflections(user_id))
     r = await get_one_unprocessed(user_id)
     logger.info(f"Queue tick: {'found id=' + str(r['id']) if r else 'empty'}")
     if not r:
+        await _update_queue_status(bot, 0)
         return
+    await _update_queue_status(bot, remaining_before)
 
     audio_path = r.get("audio_path")
     if not audio_path or not os.path.exists(audio_path):
@@ -188,6 +223,9 @@ async def process_queue(bot: Bot):
         reply_chat = r.get("chat_id") or user_id
         await bot.send_message(chat_id=reply_chat, text=reaction)
         logger.info(f"Queue: done reflection {r['id']}: {transcript[:50]}...")
+        # Обновляем статус: сколько осталось после обработки этого файла
+        remaining_after = len(await get_unprocessed_reflections(user_id))
+        await _update_queue_status(bot, remaining_after)
 
     except Exception as e:
         logger.error(f"Queue: failed {r['id']}: {e}")
