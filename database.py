@@ -99,7 +99,7 @@ async def get_today_reflections(user_id: int) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM reflections
-               WHERE user_id = ? AND processed = 1 AND date(created_at) = date('now', 'localtime')
+               WHERE user_id = ? AND transcript != '' AND date(created_at) = date('now', 'localtime')
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
@@ -112,7 +112,7 @@ async def get_week_reflections(user_id: int) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM reflections
-               WHERE user_id = ? AND processed = 1 AND created_at >= datetime('now', 'localtime', '-7 days')
+               WHERE user_id = ? AND transcript != '' AND created_at >= datetime('now', 'localtime', '-7 days')
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
