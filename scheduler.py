@@ -165,9 +165,14 @@ async def _update_queue_status(bot: Bot, remaining: int):
         if msg_id:
             try:
                 await bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=text)
-                return
-            except Exception:
-                pass
+            except Exception as e:
+                err = str(e).lower()
+                if "not modified" in err or "message_not_modified" in err:
+                    return  # текст тот же — оставляем как есть
+                # редактирование не удалось — шлём новое
+                msg = await bot.send_message(chat_id=chat_id, text=text)
+                await set_setting(key, str(msg.message_id))
+            return
         msg = await bot.send_message(chat_id=chat_id, text=text)
         await set_setting(key, str(msg.message_id))
 
