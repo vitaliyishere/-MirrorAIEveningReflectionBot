@@ -103,7 +103,7 @@ async def generate_reaction(transcript: str) -> str:
             {"role": "user", "content": transcript}
         ],
         max_tokens=20,
-        temperature=1.2
+        temperature=0.9
     )
     text = response.choices[0].message.content.strip()
     # Берём только первое предложение + следующее за ним эмодзи
