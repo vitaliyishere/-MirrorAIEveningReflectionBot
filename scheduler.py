@@ -42,6 +42,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
         return
     transcripts = [r["transcript"] for r in real_reflections]
     try:
+        await bot.send_message(chat_id=reply_chat, text="⏳ Генерирую резюме...")
         summary = await generate_daily_summary(transcripts)
         chronicle = await generate_chronicle(real_reflections)
         mood = await generate_day_mood(transcripts)

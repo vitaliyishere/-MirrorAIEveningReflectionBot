@@ -168,7 +168,6 @@ async def handle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
-    await update.message.reply_text("⏳ Генерирую резюме...")
     from scheduler import send_daily_summary
     await send_daily_summary(context.bot, reply_to=update.effective_chat.id)
 
