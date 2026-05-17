@@ -10,7 +10,7 @@ from config import (
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
 from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
-from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
+from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -139,16 +139,55 @@ async def send_weekly_summary(bot: Bot):
         )
         return
 
+    status_msg = None
     try:
-        await bot.send_message(chat_id=user_id, text="⏳ Генерирую резюме недели...")
+        from collections import defaultdict
 
-        # Основной путь: map-reduce по сырым транскриптам — максимальное качество
-        # Фолбэк: дневные резюме из БД если вдруг сырых данных нет
-        if reflections:
-            summary = await generate_weekly_summary(reflections)
-        else:
-            daily_summaries = await get_week_daily_summaries(user_id)
-            summary = await generate_weekly_summary_from_daily(daily_summaries)
+        # Группируем транскрипты по дням
+        by_day = defaultdict(list)
+        for r in reflections:
+            day = r["created_at"][:10]
+            if r.get("transcript"):
+                by_day[day].append(r["transcript"])
+
+        days_sorted = sorted(by_day.keys())
+        total = len(days_sorted)
+
+        # Прогресс-сообщение
+        status_msg = await bot.send_message(
+            chat_id=user_id,
+            text=f"⚙️ Анализирую неделю: 0 из {total} дней..."
+        )
+
+        # MAP: дайджест каждого дня с обновлением прогресса
+        digests = []
+        for i, day in enumerate(days_sorted, 1):
+            digest = await generate_day_digest(by_day[day])
+            digests.append(digest)
+            try:
+                await bot.edit_message_text(
+                    chat_id=user_id,
+                    message_id=status_msg.message_id,
+                    text=f"⚙️ Анализирую неделю: {i} из {total} дней..."
+                )
+            except Exception:
+                pass
+
+        # REDUCE: финальный анализ
+        await bot.edit_message_text(
+            chat_id=user_id,
+            message_id=status_msg.message_id,
+            text="⚙️ Генерирую итоговые инсайты..."
+        )
+        digest_blocks = "\n\n".join(f"[{d}]\n{g}" for d, g in zip(days_sorted, digests))
+        summary = await generate_weekly_from_digests(digest_blocks)
+
+        # Удаляем прогресс-сообщение
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=status_msg.message_id)
+        except Exception:
+            pass
+        status_msg = None
 
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)
@@ -160,10 +199,18 @@ async def send_weekly_summary(bot: Bot):
         logger.info(f"Weekly summary sent to {user_id}")
     except Exception as e:
         logger.error(f"Error generating weekly summary: {e}", exc_info=True)
-        await bot.send_message(
-            chat_id=user_id,
-            text="⚠️ Не удалось сгенерировать резюме недели — попробуй ещё раз."
-        )
+        # Обновляем прогресс-сообщение в ошибку если оно есть
+        if status_msg:
+            try:
+                await bot.edit_message_text(
+                    chat_id=user_id,
+                    message_id=status_msg.message_id,
+                    text="⚠️ Не удалось сгенерировать резюме недели — попробуй ещё раз."
+                )
+            except Exception:
+                await bot.send_message(chat_id=user_id, text="⚠️ Не удалось сгенерировать резюме недели — попробуй ещё раз.")
+        else:
+            await bot.send_message(chat_id=user_id, text="⚠️ Не удалось сгенерировать резюме недели — попробуй ещё раз.")
 
 
 async def _update_queue_status(bot: Bot, remaining: int, chat_ids: list[int] = None):

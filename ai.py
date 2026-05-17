@@ -249,12 +249,10 @@ async def generate_daily_summary(transcripts: list[str]) -> str:
     )
 
 
-async def _generate_day_digest(day: str, transcripts: list[str]) -> str:
+async def generate_day_digest(transcripts: list[str]) -> str:
     """MAP-шаг: сжимаем сырые транскрипты одного дня в компактный дайджест."""
     from groq import AsyncGroq
-    combined = "\n\n".join(transcripts)
-    # Обрезаем один день до ~10000 символов на случай очень длинных дней
-    combined = combined[:10000]
+    combined = "\n\n".join(transcripts)[:10000]
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
         model=GROQ_MODEL,
@@ -268,33 +266,8 @@ async def _generate_day_digest(day: str, transcripts: list[str]) -> str:
     return response.choices[0].message.content.strip()
 
 
-async def generate_weekly_summary(reflections: list[dict]) -> str:
-    """Map-reduce по сырым транскриптам: дайджест каждого дня → финальный анализ недели."""
-    from collections import defaultdict
-    import asyncio
-
-    # Группируем по дням
-    by_day = defaultdict(list)
-    for r in reflections:
-        day = r["created_at"][:10]
-        if r.get("transcript"):
-            by_day[day].append(r["transcript"])
-
-    if not by_day:
-        return "Нет данных для резюме."
-
-    # MAP: параллельно делаем дайджест каждого дня
-    days_sorted = sorted(by_day.keys())
-    digests = await asyncio.gather(*[
-        _generate_day_digest(day, by_day[day]) for day in days_sorted
-    ])
-
-    # REDUCE: финальный анализ по дайджестам
-    digest_blocks = "\n\n".join(
-        f"[{day}]\n{digest}"
-        for day, digest in zip(days_sorted, digests)
-    )
-
+async def generate_weekly_from_digests(digest_blocks: str) -> str:
+    """REDUCE-шаг: финальный анализ недели по готовым дайджестам дней."""
     from groq import AsyncGroq
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
@@ -307,6 +280,23 @@ async def generate_weekly_summary(reflections: list[dict]) -> str:
         temperature=0.7
     )
     return response.choices[0].message.content
+
+
+async def generate_weekly_summary(reflections: list[dict]) -> str:
+    """Map-reduce без прогресса — используется как фолбэк."""
+    from collections import defaultdict
+    by_day = defaultdict(list)
+    for r in reflections:
+        day = r["created_at"][:10]
+        if r.get("transcript"):
+            by_day[day].append(r["transcript"])
+    if not by_day:
+        return "Нет данных для резюме."
+    days_sorted = sorted(by_day.keys())
+    import asyncio
+    digests = await asyncio.gather(*[generate_day_digest(by_day[d]) for d in days_sorted])
+    digest_blocks = "\n\n".join(f"[{d}]\n{g}" for d, g in zip(days_sorted, digests))
+    return await generate_weekly_from_digests(digest_blocks)
 
 
 async def generate_weekly_summary_from_daily(daily_summaries: list[dict]) -> str:
