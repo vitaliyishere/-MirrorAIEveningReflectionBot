@@ -142,13 +142,13 @@ async def send_weekly_summary(bot: Bot):
     try:
         await bot.send_message(chat_id=user_id, text="⏳ Генерирую резюме недели...")
 
-        # Предпочитаем дневные резюме — они короткие и уже осмыслены
-        daily_summaries = await get_week_daily_summaries(user_id)
-        if daily_summaries:
-            summary = await generate_weekly_summary_from_daily(daily_summaries)
-        else:
-            # Фолбэк: сырые транскрипты, но обрезаем чтобы не превысить лимит Groq
+        # Основной путь: map-reduce по сырым транскриптам — максимальное качество
+        # Фолбэк: дневные резюме из БД если вдруг сырых данных нет
+        if reflections:
             summary = await generate_weekly_summary(reflections)
+        else:
+            daily_summaries = await get_week_daily_summaries(user_id)
+            summary = await generate_weekly_summary_from_daily(daily_summaries)
 
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)

@@ -194,6 +194,13 @@ async def generate_chronicle(reflections: list[dict]) -> str:
     return await groq_generate(prompt=prompt, system=CHRONICLE_SYSTEM_PROMPT)
 
 
+DAY_DIGEST_SYSTEM_PROMPT = """Сожми голосовые сообщения одного дня в компактный дайджест — максимум 10 коротких пунктов.
+
+Формат: одна строка на пункт, без форматирования, только суть.
+Сохраняй конкретику: цифры, имена, события, эмоции, инсайты.
+Пропускай воду и повторы.
+Пиши на "ты"."""
+
 WEEKLY_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают транскрипции голосовых за неделю.
 
 Пиши живо, на "ты" — как умный друг который следил за твоей неделей. Никаких шаблонных слов из инструкции в тексте.
@@ -242,19 +249,59 @@ async def generate_daily_summary(transcripts: list[str]) -> str:
     )
 
 
-async def generate_weekly_summary(transcripts: list[dict]) -> str:
-    """Фолбэк: резюме из сырых транскриптов. Обрезаем до ~12000 символов чтобы не превысить лимит Groq."""
+async def _generate_day_digest(day: str, transcripts: list[str]) -> str:
+    """MAP-шаг: сжимаем сырые транскрипты одного дня в компактный дайджест."""
     from groq import AsyncGroq
-    lines = [f"[{r['created_at'][:10]}] {r['transcript']}" for r in transcripts]
-    combined = "\n\n---\n\n".join(lines)
-    # ~12000 символов ≈ 3000 токенов — безопасно укладывается в лимит 6000 TPM с учётом вывода
-    combined = combined[:12000]
+    combined = "\n\n".join(transcripts)
+    # Обрезаем один день до ~10000 символов на случай очень длинных дней
+    combined = combined[:10000]
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": DAY_DIGEST_SYSTEM_PROMPT},
+            {"role": "user", "content": combined}
+        ],
+        max_tokens=250,
+        temperature=0.3
+    )
+    return response.choices[0].message.content.strip()
+
+
+async def generate_weekly_summary(reflections: list[dict]) -> str:
+    """Map-reduce по сырым транскриптам: дайджест каждого дня → финальный анализ недели."""
+    from collections import defaultdict
+    import asyncio
+
+    # Группируем по дням
+    by_day = defaultdict(list)
+    for r in reflections:
+        day = r["created_at"][:10]
+        if r.get("transcript"):
+            by_day[day].append(r["transcript"])
+
+    if not by_day:
+        return "Нет данных для резюме."
+
+    # MAP: параллельно делаем дайджест каждого дня
+    days_sorted = sorted(by_day.keys())
+    digests = await asyncio.gather(*[
+        _generate_day_digest(day, by_day[day]) for day in days_sorted
+    ])
+
+    # REDUCE: финальный анализ по дайджестам
+    digest_blocks = "\n\n".join(
+        f"[{day}]\n{digest}"
+        for day, digest in zip(days_sorted, digests)
+    )
+
+    from groq import AsyncGroq
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[
             {"role": "system", "content": WEEKLY_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Транскрипции за неделю:\n\n{combined}"}
+            {"role": "user", "content": f"Ключевые моменты каждого дня недели:\n\n{digest_blocks}"}
         ],
         max_tokens=1200,
         temperature=0.7
@@ -263,12 +310,10 @@ async def generate_weekly_summary(transcripts: list[dict]) -> str:
 
 
 async def generate_weekly_summary_from_daily(daily_summaries: list[dict]) -> str:
-    """Основной путь: резюме недели из дневных резюме. Компактно и не превышает лимиты."""
+    """Фолбэк: резюме недели из дневных резюме если нет сырых транскриптов."""
     from groq import AsyncGroq
     lines = [f"[{s['date']}]\n{s['content']}" for s in daily_summaries]
-    combined = "\n\n---\n\n".join(lines)
-    # Дневные резюме короткие — но на всякий случай тоже обрезаем
-    combined = combined[:14000]
+    combined = "\n\n---\n\n".join(lines)[:14000]
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
         model=GROQ_MODEL,
