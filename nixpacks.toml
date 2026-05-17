@@ -1,0 +1,2 @@
+[start]
+cmd = "python ${START_SCRIPT:-bot.py}"
