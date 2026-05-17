@@ -94,8 +94,8 @@ def main():
                 drop_pending_updates=False,
                 allowed_updates=["message", "channel_post"]
             )
-            # Запускаем queue loop здесь — бот уже полностью запущен
-            asyncio.create_task(queue_loop(tg_app.bot))
+            # Запускаем queue loop — сохраняем ссылку чтобы GC не убил задачу
+            _queue_task = asyncio.create_task(queue_loop(tg_app.bot))
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
