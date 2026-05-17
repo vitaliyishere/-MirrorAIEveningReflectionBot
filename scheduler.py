@@ -9,8 +9,8 @@ from config import (
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
-from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting
-from ai import generate_daily_summary, generate_weekly_summary, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
+from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
+from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,15 @@ async def send_weekly_summary(bot: Bot):
 
     try:
         await bot.send_message(chat_id=user_id, text="⏳ Генерирую резюме недели...")
-        summary = await generate_weekly_summary(reflections)
+
+        # Предпочитаем дневные резюме — они короткие и уже осмыслены
+        daily_summaries = await get_week_daily_summaries(user_id)
+        if daily_summaries:
+            summary = await generate_weekly_summary_from_daily(daily_summaries)
+        else:
+            # Фолбэк: сырые транскрипты, но обрезаем чтобы не превысить лимит Groq
+            summary = await generate_weekly_summary(reflections)
+
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)
         tg_text = f"🗓 *Резюме недели — {today}*\n\n{fmt(summary)}"

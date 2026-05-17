@@ -287,3 +287,18 @@ async def save_summary(user_id: int, summary_type: str, content: str, date: str)
             (user_id, summary_type, content, date)
         )
         await db.commit()
+
+
+async def get_week_daily_summaries(user_id: int) -> list[dict]:
+    """Возвращает дневные резюме за последние 7 дней."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT date, content FROM summaries
+               WHERE user_id = ? AND type = 'daily'
+               AND date >= date('now', 'localtime', '-7 days')
+               ORDER BY date ASC""",
+            (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]

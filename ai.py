@@ -243,9 +243,12 @@ async def generate_daily_summary(transcripts: list[str]) -> str:
 
 
 async def generate_weekly_summary(transcripts: list[dict]) -> str:
+    """Фолбэк: резюме из сырых транскриптов. Обрезаем до ~12000 символов чтобы не превысить лимит Groq."""
     from groq import AsyncGroq
     lines = [f"[{r['created_at'][:10]}] {r['transcript']}" for r in transcripts]
     combined = "\n\n---\n\n".join(lines)
+    # ~12000 символов ≈ 3000 токенов — безопасно укладывается в лимит 6000 TPM с учётом вывода
+    combined = combined[:12000]
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
         model=GROQ_MODEL,
@@ -253,7 +256,27 @@ async def generate_weekly_summary(transcripts: list[dict]) -> str:
             {"role": "system", "content": WEEKLY_SYSTEM_PROMPT},
             {"role": "user", "content": f"Транскрипции за неделю:\n\n{combined}"}
         ],
-        max_tokens=1500,
+        max_tokens=1200,
+        temperature=0.7
+    )
+    return response.choices[0].message.content
+
+
+async def generate_weekly_summary_from_daily(daily_summaries: list[dict]) -> str:
+    """Основной путь: резюме недели из дневных резюме. Компактно и не превышает лимиты."""
+    from groq import AsyncGroq
+    lines = [f"[{s['date']}]\n{s['content']}" for s in daily_summaries]
+    combined = "\n\n---\n\n".join(lines)
+    # Дневные резюме короткие — но на всякий случай тоже обрезаем
+    combined = combined[:14000]
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": WEEKLY_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Резюме дней за неделю:\n\n{combined}"}
+        ],
+        max_tokens=1200,
         temperature=0.7
     )
     return response.choices[0].message.content
