@@ -146,9 +146,13 @@ async def send_weekly_summary(bot: Bot):
         logger.error(f"Error generating weekly summary: {e}")
 
 
-async def _update_queue_status(bot: Bot, remaining: int):
+async def _update_queue_status(bot: Bot, remaining: int, chat_ids: list[int] = None):
     """Отправляет/редактирует/удаляет статус-сообщение очереди."""
-    targets = [ALLOWED_USER_ID] + ([CHANNEL_ID] if CHANNEL_ID else [])
+    # Шлём только в те чаты откуда пришли голосовые (или везде если не известно)
+    if chat_ids:
+        targets = list(set(chat_ids))
+    else:
+        targets = [ALLOWED_USER_ID] + ([CHANNEL_ID] if CHANNEL_ID else [])
 
     async def _handle(chat_id: int, key: str):
         stored = await get_setting(key)
@@ -186,13 +190,16 @@ async def _update_queue_status(bot: Bot, remaining: int):
 async def process_queue(bot: Bot):
     """Берёт один файл из очереди, транскрибирует и отправляет реакцию."""
     user_id = ALLOWED_USER_ID
-    remaining_before = len(await get_unprocessed_reflections(user_id))
+    all_unprocessed = await get_unprocessed_reflections(user_id)
+    remaining_before = len(all_unprocessed)
+    # Чаты откуда пришли голосовые в очереди
+    queue_chats = list({r["chat_id"] for r in all_unprocessed if r.get("chat_id")})
     r = await get_one_unprocessed(user_id)
     logger.info(f"Queue tick: {'found id=' + str(r['id']) if r else 'empty'}")
     if not r:
-        await _update_queue_status(bot, 0)
+        await _update_queue_status(bot, 0, queue_chats or None)
         return
-    await _update_queue_status(bot, remaining_before)
+    await _update_queue_status(bot, remaining_before, queue_chats)
 
     audio_path = r.get("audio_path")
     if not audio_path or not os.path.exists(audio_path):
@@ -229,8 +236,10 @@ async def process_queue(bot: Bot):
         await bot.send_message(chat_id=reply_chat, text=reaction)
         logger.info(f"Queue: done reflection {r['id']}: {transcript[:50]}...")
         # Обновляем статус: сколько осталось после обработки этого файла
-        remaining_after = len(await get_unprocessed_reflections(user_id))
-        await _update_queue_status(bot, remaining_after)
+        remaining_list = await get_unprocessed_reflections(user_id)
+        remaining_after = len(remaining_list)
+        after_chats = list({x["chat_id"] for x in remaining_list if x.get("chat_id")})
+        await _update_queue_status(bot, remaining_after, after_chats or queue_chats)
 
     except Exception as e:
         logger.error(f"Queue: failed {r['id']}: {e}")
