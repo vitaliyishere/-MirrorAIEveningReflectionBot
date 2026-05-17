@@ -68,7 +68,10 @@ def main():
         logger.info("Starting bot (polling)...")
         async with tg_app:
             await tg_app.start()
-            await tg_app.updater.start_polling(drop_pending_updates=False)
+            await tg_app.updater.start_polling(
+                drop_pending_updates=False,
+                allowed_updates=["message", "channel_post"]
+            )
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
