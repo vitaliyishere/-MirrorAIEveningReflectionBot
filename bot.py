@@ -45,7 +45,6 @@ async def post_init(application: Application):
     scheduler = setup_scheduler(application.bot)
     scheduler.start()
     logger.info("Scheduler started")
-    asyncio.create_task(queue_loop(application.bot))
     logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
 
 
@@ -88,6 +87,8 @@ def main():
                 drop_pending_updates=False,
                 allowed_updates=["message", "channel_post"]
             )
+            # Запускаем queue loop здесь — бот уже полностью запущен
+            asyncio.create_task(queue_loop(tg_app.bot))
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
