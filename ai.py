@@ -93,6 +93,7 @@ async def generate_note_title(content: str) -> str:
 
 
 async def generate_reaction(transcript: str) -> str:
+    import re
     from groq import AsyncGroq
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
@@ -104,7 +105,13 @@ async def generate_reaction(transcript: str) -> str:
         max_tokens=20,
         temperature=1.2
     )
-    return response.choices[0].message.content.strip()
+    text = response.choices[0].message.content.strip()
+    # Берём только первое предложение + следующее за ним эмодзи
+    match = re.match(r'^[^!?\n]+[!?]\s*\S*', text)
+    if match:
+        return match.group(0).strip()
+    # Если нет знака конца — берём первую строку
+    return text.split('\n')[0].strip()
 
 
 DAILY_SYSTEM_PROMPT = """Ты — личный рефлексивный ассистент. Тебе дают транскрипции голосовых за день.
