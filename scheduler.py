@@ -197,13 +197,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     tz = pytz.timezone(TIMEZONE)
     scheduler = AsyncIOScheduler(timezone=tz)
 
-    scheduler.add_job(
-        process_queue,
-        trigger="interval",
-        minutes=5,
-        args=[bot],
-        id="process_queue"
-    )
+    # process_queue теперь запускается через asyncio task loop в bot.py
 
     scheduler.add_job(
         send_daily_reminder,
