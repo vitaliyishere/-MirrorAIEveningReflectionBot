@@ -1,10 +1,11 @@
 import os
+import re
 import asyncio
 import logging
 from telegram import Update, ReactionTypeEmoji
 from telegram.ext import ContextTypes
 from config import ALLOWED_USER_ID, AUDIO_TEMP_DIR
-from database import save_reflection
+from database import save_reflection, save_music
 from ai import ensure_audio_dir
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reaction=[ReactionTypeEmoji("✍️")]
         )
         return
+
+    # Проверяем на Spotify ссылку
+    from spotify import extract_spotify_url, get_track_info, parse_music_from_text
+    spotify_url = extract_spotify_url(text)
+    if spotify_url:
+        track_info = await get_track_info(spotify_url)
+        if not track_info:
+            # Пробуем распознать из текста
+            track_info = parse_music_from_text(text)
+        if track_info:
+            note = re.sub(r'https?://\S+', '', text).strip()
+            await save_music(user_id, track_info["track"], track_info.get("artist", ""), spotify_url, note)
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[ReactionTypeEmoji("🎵")]
+            )
+            logger.info(f"Saved music: {track_info['track']} — {track_info.get('artist', '')}")
+            return
 
     await save_reflection(user_id, text)
     logger.info(f"Saved text reflection for user {user_id}")

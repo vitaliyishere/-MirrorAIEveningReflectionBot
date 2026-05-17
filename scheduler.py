@@ -9,7 +9,7 @@ from config import (
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
 )
-from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes
+from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music
 from ai import generate_daily_summary, generate_weekly_summary, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
 from notion_writer import save_to_notion
 
@@ -51,6 +51,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
 
         completed_tasks = await get_today_completed_tasks(user_id)
         notes = await get_today_notes(user_id)
+        music = await get_today_music(user_id)
 
         def fmt(text: str) -> str:
             """Конвертирует **bold** → *bold* для Telegram Markdown v1."""
@@ -79,7 +80,15 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
         if chronicle:
             tg_text += f"\n\n*Хроника дня*\n{fmt(chronicle)}"
 
-        # 4. Заметки (только заголовки — полный текст в Notion тогглах)
+        # 4. Музыка дня
+        if music:
+            music_lines = "\n".join(
+                f"🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
+                for m in music
+            )
+            tg_text += f"\n\n*Музыка дня*\n{music_lines}"
+
+        # 5. Заметки (только заголовки — полный текст в Notion тогглах)
         if notes:
             notes_lines = "\n".join(
                 f"📌 {n['created_at'][11:16]} · {n.get('title', '').strip() or 'Заметка'}"
@@ -90,7 +99,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
         # Автоматический репорт по расписанию — дублируем в канал если запрос был из лички
         if not reply_to and CHANNEL_ID:
             await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
-        await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood)
+        await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
         logger.info(f"Daily summary sent to {reply_chat}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")

@@ -246,7 +246,7 @@ async def _get_or_create_anchor(client: AsyncClient, page_id: str) -> str | None
         return None
 
 
-async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None, mood: str = None):
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None, mood: str = None, music: list[dict] = None):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
@@ -322,7 +322,22 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
                             "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]}
                         })
 
-            # 4. Toggle: дословно
+            # 4. Музыка дня
+            if music:
+                blocks.append({
+                    "object": "block", "type": "heading_3",
+                    "heading_3": {"rich_text": [{"type": "text", "text": {"content": "🎵 Музыка дня"}, "annotations": {"bold": True}}]}
+                })
+                for m in music:
+                    line = m["track"] + (f" — {m['artist']}" if m.get("artist") else "")
+                    url = m.get("spotify_url", "")
+                    rich = [{"type": "text", "text": {"content": "🎵 " + line, "link": {"url": url} if url else None}}]
+                    blocks.append({
+                        "object": "block", "type": "paragraph",
+                        "paragraph": {"rich_text": rich}
+                    })
+
+            # 5. Toggle: дословно
             if reflections:
                 blocks.append(_make_verbatim_toggle(reflections))
 

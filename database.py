@@ -62,12 +62,46 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS music (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                track TEXT NOT NULL,
+                artist TEXT NOT NULL DEFAULT '',
+                spotify_url TEXT,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )
         """)
         await db.commit()
+
+
+async def save_music(user_id: int, track: str, artist: str = "", spotify_url: str = "", note: str = "") -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO music (user_id, track, artist, spotify_url, note) VALUES (?, ?, ?, ?, ?)",
+            (user_id, track, artist, spotify_url, note)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_today_music(user_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM music WHERE user_id = ?
+               AND date(created_at) = date('now', 'localtime')
+               ORDER BY created_at ASC""",
+            (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
 
 async def get_setting(key: str) -> str | None:
