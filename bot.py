@@ -18,57 +18,70 @@ logger = logging.getLogger(__name__)
 PORT = int(os.getenv("PORT", 8080))
 
 
-async def post_init(application: Application):
-    await init_db()
-    logger.info("Database initialized")
-    scheduler = setup_scheduler(application.bot)
-    scheduler.start()
-    logger.info("Scheduler started")
-    logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
-
-
-async def run_web_server():
-    await init_db()
-    logger.info("Database initialized")
+async def run_web_server(stop_event: asyncio.Event):
     app = create_app()
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
     logger.info(f"Web server started on port {PORT}")
+    await stop_event.wait()
+    await runner.cleanup()
 
 
-async def main_async():
-    await run_web_server()
-
-    tg_app = (
-        Application.builder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .post_init(post_init)
-        .build()
-    )
-
-    tg_app.add_handler(CommandHandler("start", handle_start))
-    tg_app.add_handler(CommandHandler("status", handle_status))
-    tg_app.add_handler(CommandHandler("today", handle_today))
-    tg_app.add_handler(CommandHandler("summary", handle_summary))
-    tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice))
-    tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.CHANNEL, handle_channel_voice))
-    tg_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_channel_text))
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    logger.info("Starting bot (polling)...")
-    async with tg_app:
-        await tg_app.initialize()
-        await tg_app.start()
-        await tg_app.updater.start_polling(drop_pending_updates=False)
-        await asyncio.Event().wait()
+async def post_init(application: Application):
+    scheduler = setup_scheduler(application.bot)
+    scheduler.start()
+    logger.info("Scheduler started")
+    logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
 
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
-        raise ValueError("TELEGRAM_BOT_TOKEN is not set in .env")
-    asyncio.run(main_async())
+        raise ValueError("TELEGRAM_BOT_TOKEN is not set")
+
+    async def run():
+        await init_db()
+        logger.info("Database initialized")
+
+        stop_event = asyncio.Event()
+
+        tg_app = (
+            Application.builder()
+            .token(TELEGRAM_BOT_TOKEN)
+            .post_init(post_init)
+            .build()
+        )
+
+        tg_app.add_handler(CommandHandler("start", handle_start))
+        tg_app.add_handler(CommandHandler("status", handle_status))
+        tg_app.add_handler(CommandHandler("today", handle_today))
+        tg_app.add_handler(CommandHandler("summary", handle_summary))
+        tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice))
+        tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.CHANNEL, handle_channel_voice))
+        tg_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_channel_text))
+        tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+        # Запускаем веб-сервер и бот параллельно
+        web_task = asyncio.create_task(run_web_server(stop_event))
+
+        logger.info("Starting bot (polling)...")
+        async with tg_app:
+            await tg_app.start()
+            await tg_app.updater.start_polling(drop_pending_updates=False)
+            logger.info("Bot polling started")
+            # Держим до сигнала остановки
+            try:
+                await asyncio.Event().wait()
+            except (KeyboardInterrupt, SystemExit):
+                pass
+            finally:
+                stop_event.set()
+                await tg_app.updater.stop()
+                await tg_app.stop()
+                await web_task
+
+    asyncio.run(run())
 
 
 if __name__ == "__main__":
