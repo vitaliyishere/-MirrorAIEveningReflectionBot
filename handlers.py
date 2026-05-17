@@ -225,6 +225,13 @@ async def handle_channel_summary(update: Update, context: ContextTypes.DEFAULT_T
     await send_daily_summary(context.bot, reply_to=chat_id)
 
 
+async def handle_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        return
+    from scheduler import send_weekly_summary
+    await send_weekly_summary(context.bot)
+
+
 async def handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
