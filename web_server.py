@@ -55,10 +55,63 @@ async def handle_run_queue(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
+async def handle_cleanup_db(request: web.Request) -> web.Response:
+    """Одноразовая чистка тестовых/технических рефлексий из базы."""
+    secret = request.headers.get("X-Secret", "")
+    if secret != API_SECRET:
+        return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+    try:
+        import aiosqlite
+        from config import DB_PATH
+        test_patterns = [
+            "%дай знать работает%",
+            "%тестируешь функционал%",
+            "%проверка связи%",
+            "%это тест%",
+            "%тест бота%",
+            "%проверка бота%",
+            "%работает ли бот%",
+            "%бот работает%",
+            "%проверяю бота%",
+        ]
+        short_test_words = ["тест", "проверка", "работает", "test", "check"]
+        deleted = []
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            ids_to_delete = set()
+            for pattern in test_patterns:
+                async with db.execute(
+                    "SELECT id, transcript, created_at FROM reflections WHERE user_id = ? AND LOWER(transcript) LIKE ?",
+                    (ALLOWED_USER_ID, pattern.lower())
+                ) as cursor:
+                    for row in await cursor.fetchall():
+                        ids_to_delete.add(row["id"])
+                        deleted.append(f"[{row['created_at'][:16]}] {row['transcript'][:60]}")
+            # Короткие тестовые
+            async with db.execute(
+                "SELECT id, transcript, created_at FROM reflections WHERE user_id = ? AND length(transcript) < 15",
+                (ALLOWED_USER_ID,)
+            ) as cursor:
+                for row in await cursor.fetchall():
+                    if any(w in row["transcript"].lower() for w in short_test_words):
+                        ids_to_delete.add(row["id"])
+                        deleted.append(f"[{row['created_at'][:16]}] (short) {row['transcript']}")
+            if ids_to_delete:
+                placeholders = ",".join("?" * len(ids_to_delete))
+                await db.execute(f"DELETE FROM reflections WHERE id IN ({placeholders})", list(ids_to_delete))
+                await db.commit()
+        logger.info(f"DB cleanup: deleted {len(ids_to_delete)} test reflections")
+        return web.json_response({"ok": True, "deleted": len(ids_to_delete), "items": deleted})
+    except Exception as e:
+        logger.error(f"DB cleanup error: {e}", exc_info=True)
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
 def create_app(bot=None) -> web.Application:
     app = web.Application()
     app["bot"] = bot
     app.router.add_post("/tasks", handle_tasks)
     app.router.add_get("/health", handle_health)
     app.router.add_post("/admin/queue", handle_run_queue)
+    app.router.add_post("/admin/cleanup", handle_cleanup_db)
     return app
