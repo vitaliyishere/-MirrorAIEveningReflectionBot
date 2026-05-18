@@ -1,16 +1,16 @@
 import os
 import asyncio
 import logging
-from functools import lru_cache
 from config import AUDIO_TEMP_DIR, GROQ_API_KEY, GROQ_MODEL
 
 logger = logging.getLogger(__name__)
 
-WHISPER_MODEL_SIZE = "small"
+# Модель Groq Whisper для транскрипции (multilingual, быстрая)
+GROQ_WHISPER_MODEL = "whisper-large-v3-turbo"
 
 
 def _get_memory_mb() -> float:
-    """RSS-память процесса в МБ. Работает на Linux (/proc), на других ОС возвращает 0."""
+    """RSS-память процесса в МБ. Работает на Linux (/proc)."""
     try:
         with open("/proc/self/status") as f:
             for line in f:
@@ -19,30 +19,6 @@ def _get_memory_mb() -> float:
     except Exception:
         pass
     return 0.0
-
-
-@lru_cache(maxsize=1)
-def get_whisper_model():
-    from faster_whisper import WhisperModel
-    mem_before = _get_memory_mb()
-    logger.info(f"Загружаю Whisper модель '{WHISPER_MODEL_SIZE}' | RAM до: {mem_before:.0f} MB")
-    model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
-    mem_after = _get_memory_mb()
-    logger.info(f"Whisper модель загружена | RAM после: {mem_after:.0f} MB (+{mem_after - mem_before:.0f} MB)")
-    return model
-
-
-async def warmup_whisper() -> None:
-    """Прогревает Whisper при старте бота — загружает модель в память
-    до первого голосового, чтобы избежать OOM при одновременной загрузке
-    модели и большого аудиофайла."""
-    try:
-        loop = asyncio.get_running_loop()
-        logger.info("Прогрев Whisper модели...")
-        await loop.run_in_executor(None, get_whisper_model)
-        logger.info(f"Whisper прогрет | RAM: {_get_memory_mb():.0f} MB")
-    except Exception as e:
-        logger.error(f"Whisper warmup failed: {e}", exc_info=True)
 
 
 async def groq_generate(prompt: str, system: str) -> str:
@@ -263,36 +239,34 @@ WEEKLY_SYSTEM_PROMPT = """Ты пишешь личное резюме недел
 
 
 async def transcribe_audio(file_path: str) -> str:
-    """Транскрибирует аудио через faster-whisper в отдельном потоке.
+    """Транскрибирует аудио через Groq Whisper API.
 
-    beam_size=1  — greedy-декодинг: быстрее и дешевле по памяти чем beam=5,
-                   для разговорного русского точность практически идентична.
-    vad_filter=True — Silero VAD пропускает тишину, ускоряет длинные записи.
+    Никакой локальной RAM на модель — всё на серверах Groq.
+    Лимит: 25 МБ на файл, ~7200 сек аудио/день на free tier.
+    Модель: whisper-large-v3-turbo (multilingual, быстрая, точная).
     """
-    loop = asyncio.get_running_loop()
+    from groq import AsyncGroq
 
-    def _transcribe():
-        mem_before = _get_memory_mb()
-        model = get_whisper_model()
-        fname = os.path.basename(file_path)
-        logger.info(f"Транскрипция: {fname} | RAM: {mem_before:.0f} MB")
+    fname = os.path.basename(file_path)
+    file_size_mb = os.path.getsize(file_path) / 1024 / 1024
+    mem = _get_memory_mb()
+    logger.info(f"Groq Whisper: {fname} ({file_size_mb:.1f} MB) | RAM: {mem:.0f} MB")
 
-        segments, info = model.transcribe(
-            file_path,
+    if file_size_mb > 24:
+        logger.warning(f"File {fname} is {file_size_mb:.1f} MB — near Groq 25 MB limit")
+
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    with open(file_path, "rb") as f:
+        transcription = await client.audio.transcriptions.create(
+            file=(fname, f),
+            model=GROQ_WHISPER_MODEL,
             language="ru",
-            beam_size=1,
-            vad_filter=True,
         )
-        text = " ".join(segment.text.strip() for segment in segments)
 
-        mem_after = _get_memory_mb()
-        logger.info(
-            f"Транскрипция готова ({info.duration:.1f}s аудио) | "
-            f"RAM: {mem_after:.0f} MB | {text[:60]}..."
-        )
-        return text
-
-    return await loop.run_in_executor(None, _transcribe)
+    text = transcription.text.strip()
+    mem_after = _get_memory_mb()
+    logger.info(f"Groq Whisper done | RAM: {mem_after:.0f} MB | {text[:60]}...")
+    return text
 
 
 async def generate_daily_summary(transcripts: list[str]) -> str:

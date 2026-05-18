@@ -104,9 +104,6 @@ def main():
                 allowed_updates=["message", "channel_post"]
             )
             _queue_task = asyncio.create_task(queue_loop(tg_app.bot))
-            # Прогреваем Whisper после старта polling — event loop активен, задача точно запустится
-            from ai import warmup_whisper
-            asyncio.create_task(warmup_whisper())
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
