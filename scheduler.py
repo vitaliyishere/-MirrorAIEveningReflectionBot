@@ -2,7 +2,6 @@ import os
 import logging
 from datetime import datetime, date
 import pytz
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Bot
 from config import (
     ALLOWED_USER_ID, TIMEZONE, CHANNEL_ID,
@@ -313,38 +312,38 @@ async def process_queue(bot: Bot):
         logger.error(f"Queue: failed {r['id']}: {e}")
 
 
-def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
+def setup_scheduler(application) -> None:
+    """Настраивает расписание через PTB JobQueue (встроен в Application).
+    PTB 21.x управляет event loop сам — raw APScheduler с ним несовместим."""
+    import datetime
     tz = pytz.timezone(TIMEZONE)
-    scheduler = AsyncIOScheduler(timezone=tz)
+    jq = application.job_queue
 
-    # process_queue теперь запускается через asyncio task loop в bot.py
+    async def daily_reminder_job(context):
+        await send_daily_reminder(context.bot)
 
-    scheduler.add_job(
-        send_daily_reminder,
-        trigger="cron",
-        hour=21,
-        minute=30,
-        args=[bot],
-        id="daily_reminder"
+    async def daily_summary_job(context):
+        await send_daily_summary(context.bot)
+
+    async def weekly_summary_job(context):
+        await send_weekly_summary(context.bot)
+
+    jq.run_daily(
+        daily_reminder_job,
+        time=datetime.time(21, 30, 0, tzinfo=tz),
+        name="daily_reminder"
     )
-
-    scheduler.add_job(
-        send_daily_summary,
-        trigger="cron",
-        hour=DAILY_SUMMARY_HOUR,
-        minute=DAILY_SUMMARY_MINUTE,
-        args=[bot],
-        id="daily_summary"
+    jq.run_daily(
+        daily_summary_job,
+        time=datetime.time(DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE, 0, tzinfo=tz),
+        name="daily_summary"
     )
-
-    scheduler.add_job(
-        send_weekly_summary,
-        trigger="cron",
-        day_of_week=WEEKLY_SUMMARY_DAY,
-        hour=WEEKLY_SUMMARY_HOUR,
-        minute=WEEKLY_SUMMARY_MINUTE,
-        args=[bot],
-        id="weekly_summary"
+    jq.run_daily(
+        weekly_summary_job,
+        time=datetime.time(WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE, 0, tzinfo=tz),
+        days=(WEEKLY_SUMMARY_DAY,),
+        name="weekly_summary"
     )
+    logger.info(f"Jobs scheduled: reminder 21:30, summary {DAILY_SUMMARY_HOUR}:{DAILY_SUMMARY_MINUTE:02d}, weekly Sun {WEEKLY_SUMMARY_HOUR}:{WEEKLY_SUMMARY_MINUTE:02d} MSK")
 
     return scheduler

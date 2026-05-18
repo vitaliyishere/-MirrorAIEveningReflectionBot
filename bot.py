@@ -57,8 +57,7 @@ async def queue_loop(bot):
 
 
 async def post_init(application: Application):
-    scheduler = setup_scheduler(application.bot)
-    scheduler.start()
+    setup_scheduler(application)
     logger.info("Scheduler started")
     logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
 
