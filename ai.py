@@ -36,10 +36,13 @@ async def warmup_whisper() -> None:
     """Прогревает Whisper при старте бота — загружает модель в память
     до первого голосового, чтобы избежать OOM при одновременной загрузке
     модели и большого аудиофайла."""
-    loop = asyncio.get_event_loop()
-    logger.info("Прогрев Whisper модели...")
-    await loop.run_in_executor(None, get_whisper_model)
-    logger.info(f"Whisper прогрет | RAM: {_get_memory_mb():.0f} MB")
+    try:
+        loop = asyncio.get_running_loop()
+        logger.info("Прогрев Whisper модели...")
+        await loop.run_in_executor(None, get_whisper_model)
+        logger.info(f"Whisper прогрет | RAM: {_get_memory_mb():.0f} MB")
+    except Exception as e:
+        logger.error(f"Whisper warmup failed: {e}", exc_info=True)
 
 
 async def groq_generate(prompt: str, system: str) -> str:
@@ -266,7 +269,7 @@ async def transcribe_audio(file_path: str) -> str:
                    для разговорного русского точность практически идентична.
     vad_filter=True — Silero VAD пропускает тишину, ускоряет длинные записи.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _transcribe():
         mem_before = _get_memory_mb()
