@@ -345,5 +345,3 @@ def setup_scheduler(application) -> None:
         name="weekly_summary"
     )
     logger.info(f"Jobs scheduled: reminder 21:30, summary {DAILY_SUMMARY_HOUR}:{DAILY_SUMMARY_MINUTE:02d}, weekly Sun {WEEKLY_SUMMARY_HOUR}:{WEEKLY_SUMMARY_MINUTE:02d} MSK")
-
-    return scheduler
