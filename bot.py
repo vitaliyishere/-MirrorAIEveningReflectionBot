@@ -61,9 +61,6 @@ async def post_init(application: Application):
     scheduler.start()
     logger.info("Scheduler started")
     logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
-    # Прогреваем Whisper в фоне — к первому голосовому модель уже в памяти
-    from ai import warmup_whisper
-    asyncio.create_task(warmup_whisper())
 
 
 def main():
@@ -107,6 +104,9 @@ def main():
                 allowed_updates=["message", "channel_post"]
             )
             _queue_task = asyncio.create_task(queue_loop(tg_app.bot))
+            # Прогреваем Whisper после старта polling — event loop активен, задача точно запустится
+            from ai import warmup_whisper
+            asyncio.create_task(warmup_whisper())
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
