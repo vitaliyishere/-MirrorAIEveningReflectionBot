@@ -57,12 +57,14 @@ async def queue_loop(bot):
 
 
 async def post_init(application: Application):
+    logger.info("post_init: called")
     try:
+        logger.info("post_init: calling setup_scheduler...")
         setup_scheduler(application)
-        logger.info("Scheduler started")
+        logger.info("post_init: setup_scheduler done, jobs registered")
         logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
     except Exception as e:
-        logger.error(f"Scheduler setup failed: {e}", exc_info=True)
+        logger.error(f"post_init: Scheduler setup failed: {e}", exc_info=True)
 
 
 def main():
