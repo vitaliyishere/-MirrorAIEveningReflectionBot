@@ -9,13 +9,37 @@ logger = logging.getLogger(__name__)
 WHISPER_MODEL_SIZE = "small"
 
 
+def _get_memory_mb() -> float:
+    """RSS-память процесса в МБ. Работает на Linux (/proc), на других ОС возвращает 0."""
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024
+    except Exception:
+        pass
+    return 0.0
+
+
 @lru_cache(maxsize=1)
 def get_whisper_model():
     from faster_whisper import WhisperModel
-    logger.info(f"Загружаю Whisper модель '{WHISPER_MODEL_SIZE}'...")
+    mem_before = _get_memory_mb()
+    logger.info(f"Загружаю Whisper модель '{WHISPER_MODEL_SIZE}' | RAM до: {mem_before:.0f} MB")
     model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
-    logger.info("Whisper модель загружена")
+    mem_after = _get_memory_mb()
+    logger.info(f"Whisper модель загружена | RAM после: {mem_after:.0f} MB (+{mem_after - mem_before:.0f} MB)")
     return model
+
+
+async def warmup_whisper() -> None:
+    """Прогревает Whisper при старте бота — загружает модель в память
+    до первого голосового, чтобы избежать OOM при одновременной загрузке
+    модели и большого аудиофайла."""
+    loop = asyncio.get_event_loop()
+    logger.info("Прогрев Whisper модели...")
+    await loop.run_in_executor(None, get_whisper_model)
+    logger.info(f"Whisper прогрет | RAM: {_get_memory_mb():.0f} MB")
 
 
 async def groq_generate(prompt: str, system: str) -> str:
@@ -236,14 +260,33 @@ WEEKLY_SYSTEM_PROMPT = """Ты пишешь личное резюме недел
 
 
 async def transcribe_audio(file_path: str) -> str:
-    # Запускаем синхронный faster-whisper в отдельном потоке
+    """Транскрибирует аудио через faster-whisper в отдельном потоке.
+
+    beam_size=1  — greedy-декодинг: быстрее и дешевле по памяти чем beam=5,
+                   для разговорного русского точность практически идентична.
+    vad_filter=True — Silero VAD пропускает тишину, ускоряет длинные записи.
+    """
     loop = asyncio.get_event_loop()
 
     def _transcribe():
+        mem_before = _get_memory_mb()
         model = get_whisper_model()
-        segments, info = model.transcribe(file_path, language="ru", beam_size=5)
+        fname = os.path.basename(file_path)
+        logger.info(f"Транскрипция: {fname} | RAM: {mem_before:.0f} MB")
+
+        segments, info = model.transcribe(
+            file_path,
+            language="ru",
+            beam_size=1,
+            vad_filter=True,
+        )
         text = " ".join(segment.text.strip() for segment in segments)
-        logger.info(f"Транскрипция готова ({info.duration:.1f}s аудио): {text[:60]}...")
+
+        mem_after = _get_memory_mb()
+        logger.info(
+            f"Транскрипция готова ({info.duration:.1f}s аудио) | "
+            f"RAM: {mem_after:.0f} MB | {text[:60]}..."
+        )
         return text
 
     return await loop.run_in_executor(None, _transcribe)

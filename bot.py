@@ -8,6 +8,7 @@ from database import init_db, reset_stuck_audio
 from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_text, handle_status, handle_today, handle_summary, handle_channel_summary, handle_weekly
 from scheduler import setup_scheduler
 from web_server import create_app
+import events
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -30,13 +31,19 @@ async def run_web_server(stop_event: asyncio.Event, bot=None):
 
 
 async def queue_loop(bot):
-    """Воркер очереди голосовых. Запускается внутри bot.py — отдельный Railway сервис
-    невозможен т.к. SQLite volume нельзя шарить между контейнерами (нет volumeInstanceCreate в API).
-    При деплое бота: reset_stuck_audio на старте возвращает незавершённые голосовые в очередь."""
-    logger.info("Queue worker started (30s interval)")
+    """Event-driven воркер очереди голосовых.
+    Просыпается сразу при новом голосовом (events.new_voice) или каждые 30с.
+    Это даёт реакцию с текстом за ~10-15с вместо до 30с."""
+    logger.info("Queue worker started (event-driven + 30s fallback)")
     _running = False
     while True:
-        await asyncio.sleep(30)
+        # Ждём сигнал о новом голосовом ИЛИ таймаут 30с
+        try:
+            await asyncio.wait_for(events.new_voice.wait(), timeout=30)
+            events.new_voice.clear()
+        except asyncio.TimeoutError:
+            pass
+
         if _running:
             continue
         _running = True
@@ -54,6 +61,9 @@ async def post_init(application: Application):
     scheduler.start()
     logger.info("Scheduler started")
     logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
+    # Прогреваем Whisper в фоне — к первому голосовому модель уже в памяти
+    from ai import warmup_whisper
+    asyncio.create_task(warmup_whisper())
 
 
 def main():
@@ -64,7 +74,7 @@ def main():
         await init_db()
         logger.info("Database initialized")
         await reset_stuck_audio(ALLOWED_USER_ID)
-
+        events.init()  # инициализируем события до запуска polling
 
         stop_event = asyncio.Event()
 

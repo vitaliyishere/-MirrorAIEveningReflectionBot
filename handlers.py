@@ -40,6 +40,9 @@ async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voic
             message_id=message_id,
             reaction=[ReactionTypeEmoji("👌")]
         )
+        # Будим queue_loop — не ждём таймаут, обрабатываем сразу
+        import events
+        events.notify()
     except Exception as e:
         logger.error(f"Error receiving voice: {e}", exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text="⏳ Не смог сохранить — попробуй ещё раз.")
