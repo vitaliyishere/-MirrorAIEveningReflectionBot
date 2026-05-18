@@ -282,10 +282,11 @@ async def process_queue(bot: Bot):
                 logger.info(f"Queue: re-downloaded audio for reflection {r['id']}")
             except Exception as e:
                 logger.error(f"Queue: can't re-download {r['id']}: {e}")
-                await mark_processed(r["id"])
+                # Ставим ❌ чтобы reset_stuck_audio не возвращал эту запись вечно
+                await update_transcript(r["id"], "❌")
                 return
         else:
-            await mark_processed(r["id"])
+            await update_transcript(r["id"], "❌")
             return
 
     try:

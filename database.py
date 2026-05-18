@@ -140,18 +140,33 @@ async def update_transcript(reflection_id: int, transcript: str):
 
 
 async def reset_stuck_audio(user_id: int):
-    """Сбрасывает записи с audio_file_id но без транскрипции обратно в очередь."""
+    """Сбрасывает недавно зависшие голосовые обратно в очередь.
+
+    Только записи за последние 24 часа — Telegram хранит файлы 24ч,
+    более старые невозможно перекачать и они должны оставаться как есть.
+    Записи с transcript='❌' (постоянный сбой) тоже пропускаем.
+    """
     async with aiosqlite.connect(DB_PATH) as db:
+        # Помечаем просроченные записи (> 24ч, пустой transcript) как окончательно упавшие
+        await db.execute(
+            """UPDATE reflections SET processed = 1, transcript = '❌'
+               WHERE user_id = ? AND audio_file_id IS NOT NULL
+               AND (transcript IS NULL OR transcript = '')
+               AND created_at < datetime('now', 'localtime', '-24 hours')""",
+            (user_id,)
+        )
+        # Сбрасываем только свежие (< 24ч) — у них ещё есть шанс
         result = await db.execute(
             """UPDATE reflections SET processed = 0
                WHERE user_id = ? AND audio_file_id IS NOT NULL
-               AND (transcript IS NULL OR transcript = '')""",
+               AND (transcript IS NULL OR transcript = '')
+               AND created_at >= datetime('now', 'localtime', '-24 hours')""",
             (user_id,)
         )
         await db.commit()
         if result.rowcount > 0:
             import logging
-            logging.getLogger(__name__).info(f"Reset {result.rowcount} stuck audio reflections to queue")
+            logging.getLogger(__name__).info(f"Reset {result.rowcount} recent stuck audio reflections to queue")
 
 
 async def get_one_unprocessed(user_id: int) -> dict | None:
@@ -170,7 +185,8 @@ async def get_today_reflections(user_id: int) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM reflections
-               WHERE user_id = ? AND transcript != '' AND date(created_at) = date('now', 'localtime')
+               WHERE user_id = ? AND transcript != '' AND transcript != '❌'
+               AND date(created_at) = date('now', 'localtime')
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
@@ -183,7 +199,8 @@ async def get_week_reflections(user_id: int) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM reflections
-               WHERE user_id = ? AND transcript != '' AND created_at >= datetime('now', 'localtime', '-7 days')
+               WHERE user_id = ? AND transcript != '' AND transcript != '❌'
+               AND created_at >= datetime('now', 'localtime', '-7 days')
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
