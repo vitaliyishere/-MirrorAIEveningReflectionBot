@@ -197,52 +197,34 @@ def _make_verbatim_toggle(reflections: list[dict]) -> dict:
     }
 
 
-async def _get_or_create_anchor(client: AsyncClient, page_id: str) -> str | None:
-    """
-    Возвращает ID якорного блока (первого блока страницы).
-    Если страница пустая — создаёт якорь автоматически.
-    Если страница уже с контентом — создаёт якорь в конце и просит пользователя перетащить его наверх (один раз).
-    """
-    anchor_id = await get_setting("notion_anchor_id")
-    if anchor_id:
-        return anchor_id
-
+async def _get_anchor(client: AsyncClient, page_id: str) -> str | None:
+    """Возвращает ID первого блока страницы — после него вставляются новые записи.
+    Это обеспечивает порядок 'новые сверху'.
+    Если страница пустая — создаёт 📌 заголовок."""
     try:
         response = await client.blocks.children.list(block_id=page_id, page_size=1)
         children = response.get("results", [])
-
-        if not children:
-            # Страница пустая — создаём якорь сразу наверху
-            result = await client.blocks.children.append(
-                block_id=page_id,
-                children=[{
-                    "object": "block",
-                    "type": "heading_1",
-                    "heading_1": {"rich_text": [{"type": "text", "text": {"content": "📋 Дневник рефлексий"}}]}
-                }]
-            )
-            anchor_id = result["results"][0]["id"]
-            logger.info(f"Notion: создан якорный блок (страница была пустой): {anchor_id}")
-        else:
-            # Страница уже с контентом — добавляем callout-подсказку в конец
-            result = await client.blocks.children.append(
-                block_id=page_id,
-                children=[{
-                    "object": "block",
-                    "type": "callout",
-                    "callout": {
-                        "rich_text": [{"type": "text", "text": {"content": "⬆️ Перетащи этот блок в самый верх страницы (один раз) — это якорь для новых записей"}}],
-                        "icon": {"emoji": "📌"}
-                    }
-                }]
-            )
-            anchor_id = result["results"][0]["id"]
-            logger.info(f"Notion: якорь добавлен в конец страницы, нужно перетащить наверх: {anchor_id}")
-
-        await set_setting("notion_anchor_id", anchor_id)
+        if children:
+            anchor_id = children[0]["id"]
+            logger.info(f"Notion: anchor = первый блок страницы {anchor_id}")
+            return anchor_id
+        # Страница пустая — создаём заголовок
+        result = await client.blocks.children.append(
+            block_id=page_id,
+            children=[{
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "rich_text": [{"type": "text", "text": {"content": "📌 Дневник рефлексий"}}],
+                    "icon": {"emoji": "📌"}
+                }
+            }]
+        )
+        anchor_id = result["results"][0]["id"]
+        logger.info(f"Notion: создан 📌 якорь (страница была пустой): {anchor_id}")
         return anchor_id
     except Exception as e:
-        logger.error(f"Notion: не удалось создать якорь: {e}")
+        logger.error(f"Notion: не удалось получить якорь: {e}")
         return None
 
 
@@ -363,7 +345,7 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
             # Недельный — старая логика
             blocks = _parse_summary_to_blocks(summary, summary_type, mood=mood)
 
-        anchor_id = await _get_or_create_anchor(client, NOTION_PAGE_ID)
+        anchor_id = await _get_anchor(client, NOTION_PAGE_ID)
         append_kwargs = {"block_id": NOTION_PAGE_ID, "children": blocks}
         if anchor_id:
             append_kwargs["after"] = anchor_id
