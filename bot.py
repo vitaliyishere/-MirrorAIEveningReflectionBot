@@ -56,15 +56,6 @@ async def queue_loop(bot):
             _running = False
 
 
-async def post_init(application: Application):
-    logger.info("post_init: called")
-    try:
-        logger.info("post_init: calling setup_scheduler...")
-        setup_scheduler(application)
-        logger.info("post_init: setup_scheduler done, jobs registered")
-        logger.info(f"Bot running for user_id={ALLOWED_USER_ID}")
-    except Exception as e:
-        logger.error(f"post_init: Scheduler setup failed: {e}", exc_info=True)
 
 
 def main():
@@ -82,7 +73,6 @@ def main():
         tg_app = (
             Application.builder()
             .token(TELEGRAM_BOT_TOKEN)
-            .post_init(post_init)
             .build()
         )
 
@@ -103,6 +93,9 @@ def main():
         logger.info("Starting bot (polling)...")
         async with tg_app:
             await tg_app.start()
+            # Настраиваем джобы ПОСЛЕ tg_app.start() — именно тогда PTB запускает job_queue
+            setup_scheduler(tg_app)
+            logger.info(f"Scheduler ready | user_id={ALLOWED_USER_ID}")
             await tg_app.updater.start_polling(
                 drop_pending_updates=False,
                 allowed_updates=["message", "channel_post"]
