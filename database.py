@@ -209,10 +209,12 @@ async def get_week_reflections(user_id: int) -> list[dict]:
 
 
 async def get_unprocessed_reflections(user_id: int) -> list[dict]:
+    """Только аудио-записи ожидающие транскрипции (processed=0 AND audio_path IS NOT NULL).
+    Текстовые рефлексии не считаем — им транскрипция не нужна."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM reflections WHERE user_id = ? AND processed = 0 ORDER BY created_at ASC",
+            "SELECT * FROM reflections WHERE user_id = ? AND processed = 0 AND audio_path IS NOT NULL ORDER BY created_at ASC",
             (user_id,)
         ) as cursor:
             rows = await cursor.fetchall()
