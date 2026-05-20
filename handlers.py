@@ -68,27 +68,32 @@ async def handle_channel_text(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     text = post.text
 
-    # Проверяем на музыку
-    from spotify import extract_spotify_url, get_track_info, parse_music_from_text, is_music_text
-    from database import save_music
-    spotify_url = extract_spotify_url(text)
-    track_info = None
-    if spotify_url:
-        track_info = await get_track_info(spotify_url)
-        if not track_info:
+    # Внешняя заметка проверяется ПЕРВОЙ — длинный структурированный текст
+    # не должен попадать в музыку даже если содержит слова "трек", "музыка" и т.п.
+    if _is_external_note(text):
+        pass  # handled below
+    else:
+        # Проверяем на музыку только если текст не похож на заметку
+        from spotify import extract_spotify_url, get_track_info, parse_music_from_text, is_music_text
+        from database import save_music
+        spotify_url = extract_spotify_url(text)
+        track_info = None
+        if spotify_url:
+            track_info = await get_track_info(spotify_url)
+            if not track_info:
+                track_info = parse_music_from_text(text)
+        elif is_music_text(text):
             track_info = parse_music_from_text(text)
-    elif is_music_text(text):
-        track_info = parse_music_from_text(text)
-    if track_info:
-        note = re.sub(r'https?://\S+', '', text).strip()
-        await save_music(ALLOWED_USER_ID, track_info["track"], track_info.get("artist", ""), spotify_url or "", note)
-        await context.bot.set_message_reaction(
-            chat_id=post.chat.id,
-            message_id=post.message_id,
-            reaction=[ReactionTypeEmoji("🔥")]
-        )
-        logger.info(f"Channel music saved: {track_info['track']} — {track_info.get('artist', '')}")
-        return
+        if track_info:
+            note = re.sub(r'https?://\S+', '', text).strip()
+            await save_music(ALLOWED_USER_ID, track_info["track"], track_info.get("artist", ""), spotify_url or "", note)
+            await context.bot.set_message_reaction(
+                chat_id=post.chat.id,
+                message_id=post.message_id,
+                reaction=[ReactionTypeEmoji("🔥")]
+            )
+            logger.info(f"Channel music saved: {track_info['track']} — {track_info.get('artist', '')}")
+            return
 
     if _is_external_note(text):
         from database import save_note, get_recent_note, append_to_note
