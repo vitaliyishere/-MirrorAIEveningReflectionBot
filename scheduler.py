@@ -6,7 +6,8 @@ from telegram import Bot
 from config import (
     ALLOWED_USER_ID, TIMEZONE, CHANNEL_ID,
     DAILY_SUMMARY_HOUR, DAILY_SUMMARY_MINUTE,
-    WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE
+    WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE,
+    TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID,
 )
 from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
 from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
@@ -42,7 +43,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
     transcripts = [r["transcript"] for r in real_reflections]
     try:
         await bot.send_message(chat_id=reply_chat, text="⏳ Генерирую резюме...")
-        summary = await generate_daily_summary(transcripts)
+        summary = await generate_daily_summary(transcripts, toggl_context=toggl_context)
         chronicle = await generate_chronicle(real_reflections)
         mood = await generate_day_mood(transcripts)
         today = date.today().isoformat()
@@ -51,6 +52,18 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
         completed_tasks = await get_today_completed_tasks(user_id)
         notes = await get_today_notes(user_id)
         music = await get_today_music(user_id)
+
+        # Toggl — тихо, без падений если API недоступен
+        toggl_block = ""
+        toggl_context = ""
+        if TOGGL_API_TOKEN:
+            try:
+                from toggl import fetch_today_data, format_toggl_block, toggl_context_for_ai
+                toggl_entries, toggl_projects = await fetch_today_data(TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID)
+                toggl_block = format_toggl_block(toggl_entries, toggl_projects)
+                toggl_context = toggl_context_for_ai(toggl_entries, toggl_projects)
+            except Exception as e:
+                logger.warning(f"Toggl fetch failed (non-critical): {e}")
 
         def fmt(text: str) -> str:
             """Конвертирует **bold** → *bold* для Telegram Markdown v1."""
@@ -72,7 +85,11 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
                 lines = "\n".join(f"• {l.strip()}" for l in tasks_clean.split("\n") if l.strip())
                 tg_text += f"✅ *Сделано сегодня*\n{lines}\n\n"
 
-        # 2. Темы дня / Ключевые идеи / Взгляд со стороны (из summary)
+        # 2. Время дня (Toggl)
+        if toggl_block:
+            tg_text += f"{toggl_block}\n\n"
+
+        # 3. Темы дня / Ключевые идеи / Взгляд со стороны (из summary)
         tg_text += fmt(summary)
 
         # 3. Хроника дня

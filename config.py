@@ -18,3 +18,6 @@ WEEKLY_SUMMARY_MINUTE = 0
 DB_PATH = os.getenv("DB_PATH", "reflections.db")
 AUDIO_TEMP_DIR = os.getenv("AUDIO_TEMP_DIR", "/data/audio")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
+
+TOGGL_API_TOKEN = os.getenv("TOGGL_API_TOKEN", "")
+TOGGL_WORKSPACE_ID = int(os.getenv("TOGGL_WORKSPACE_ID", "8683201"))

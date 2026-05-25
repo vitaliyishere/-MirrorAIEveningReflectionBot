@@ -279,14 +279,14 @@ async def transcribe_audio(file_path: str) -> str:
     return text
 
 
-async def generate_daily_summary(transcripts: list[str]) -> str:
+async def generate_daily_summary(transcripts: list[str], toggl_context: str = "") -> str:
     combined = "\n\n---\n\n".join(
         f"[{i+1}] {t}" for i, t in enumerate(transcripts)
     )
-    return await groq_generate(
-        prompt=f"Транскрипции за сегодня:\n\n{combined}",
-        system=DAILY_SYSTEM_PROMPT
-    )
+    prompt = f"Транскрипции за сегодня:\n\n{combined}"
+    if toggl_context:
+        prompt += f"\n\n---\nКак провёл время сегодня (Toggl): {toggl_context}"
+    return await groq_generate(prompt=prompt, system=DAILY_SYSTEM_PROMPT)
 
 
 async def generate_day_digest(transcripts: list[str]) -> str:
