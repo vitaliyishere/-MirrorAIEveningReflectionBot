@@ -96,7 +96,7 @@ async def get_today_music(user_id: int) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM music WHERE user_id = ?
-               AND date(created_at) = date('now', 'localtime')
+               AND date(datetime(created_at, '+3 hours')) = date(datetime('now', '+3 hours'))
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
@@ -181,12 +181,14 @@ async def get_one_unprocessed(user_id: int) -> dict | None:
 
 
 async def get_today_reflections(user_id: int) -> list[dict]:
+    # Сравниваем даты в московском времени (UTC+3) — записи после 00:00 МСК
+    # хранятся как предыдущий день UTC и без этого теряются при резюме
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM reflections
                WHERE user_id = ? AND transcript != '' AND transcript != '❌'
-               AND date(created_at) = date('now', 'localtime')
+               AND date(datetime(created_at, '+3 hours')) = date(datetime('now', '+3 hours'))
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
@@ -272,7 +274,7 @@ async def get_today_notes(user_id: int) -> list[dict]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """SELECT * FROM notes WHERE user_id = ?
-               AND date(created_at) = date('now', 'localtime')
+               AND date(datetime(created_at, '+3 hours')) = date(datetime('now', '+3 hours'))
                ORDER BY created_at ASC""",
             (user_id,)
         ) as cursor:
@@ -292,7 +294,7 @@ async def save_completed_tasks(user_id: int, raw_text: str, task_date: str):
 async def get_today_completed_tasks(user_id: int) -> str | None:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT raw_text FROM completed_tasks WHERE user_id = ? AND task_date = date('now', 'localtime') ORDER BY created_at DESC LIMIT 1",
+            "SELECT raw_text FROM completed_tasks WHERE user_id = ? AND task_date = date(datetime('now', '+3 hours')) ORDER BY created_at DESC LIMIT 1",
             (user_id,)
         ) as cursor:
             row = await cursor.fetchone()
