@@ -52,16 +52,8 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
     transcripts = [r["transcript"] for r in real_reflections]
     try:
         await bot.send_message(chat_id=reply_chat, text="⏳ Генерирую резюме...")
-        summary = await generate_daily_summary(transcripts, toggl_context=toggl_context)
-        chronicle = await generate_chronicle(real_reflections)
-        mood = await generate_day_mood(transcripts)
-        await save_summary(user_id, "daily", summary, today)
 
-        completed_tasks = await get_today_completed_tasks(user_id)
-        notes = await get_today_notes(user_id)
-        music = await get_today_music(user_id)
-
-        # Toggl — тихо, без падений если API недоступен
+        # Toggl — сначала, чтобы пробросить контекст в AI промпт
         toggl_block = ""
         toggl_context = ""
         if TOGGL_API_TOKEN:
@@ -72,6 +64,15 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
                 toggl_context = toggl_context_for_ai(toggl_entries, toggl_projects)
             except Exception as e:
                 logger.warning(f"Toggl fetch failed (non-critical): {e}")
+
+        summary = await generate_daily_summary(transcripts, toggl_context=toggl_context)
+        chronicle = await generate_chronicle(real_reflections)
+        mood = await generate_day_mood(transcripts)
+        await save_summary(user_id, "daily", summary, today)
+
+        completed_tasks = await get_today_completed_tasks(user_id)
+        notes = await get_today_notes(user_id)
+        music = await get_today_music(user_id)
 
         def fmt(text: str) -> str:
             """Конвертирует **bold** → *bold* для Telegram Markdown v1."""
