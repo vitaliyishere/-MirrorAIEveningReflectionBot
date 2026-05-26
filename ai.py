@@ -285,7 +285,7 @@ async def generate_daily_summary(transcripts: list[str], toggl_context: str = ""
     )
     prompt = f"Транскрипции за сегодня:\n\n{combined}"
     if toggl_context:
-        prompt += f"\n\n---\nКак провёл время сегодня (Toggl): {toggl_context}"
+        prompt += f"\n\n---\nСправочно (НЕ включать в резюме — данные о времени уже показаны отдельным блоком): {toggl_context}"
     return await groq_generate(prompt=prompt, system=DAILY_SYSTEM_PROMPT)
 
 
