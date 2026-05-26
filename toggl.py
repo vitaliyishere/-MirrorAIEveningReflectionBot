@@ -63,6 +63,10 @@ async def fetch_today_data(api_token: str, workspace_id: int, date_str: str = No
     msk = pytz.timezone("Europe/Moscow")
     today_msk = date_str or datetime.datetime.now(msk).date().isoformat()
 
+    # Toggl API требует полный datetime с таймзоной, иначе возвращает 0 записей
+    start = f"{today_msk}T00:00:00+03:00"
+    end   = f"{today_msk}T23:59:59+03:00"
+
     auth = aiohttp.BasicAuth(api_token, "api_token")
     timeout = aiohttp.ClientTimeout(total=10)
 
@@ -70,7 +74,7 @@ async def fetch_today_data(api_token: str, workspace_id: int, date_str: str = No
         # Записи за сегодня
         async with session.get(
             f"{TOGGL_API_BASE}/me/time_entries",
-            params={"start_date": today_msk, "end_date": today_msk}
+            params={"start_date": start, "end_date": end}
         ) as resp:
             if resp.status != 200:
                 logger.error(f"Toggl time_entries error: {resp.status}")
