@@ -243,8 +243,23 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_channel_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from scheduler import send_daily_summary
-    chat_id = update.channel_post.chat.id
-    await send_daily_summary(context.bot, reply_to=chat_id)
+    import datetime, pytz
+    from config import TIMEZONE
+    post = update.channel_post
+    chat_id = post.chat.id
+
+    for_date = None
+    parts = (post.text or "").strip().split()
+    if len(parts) > 1:
+        arg = parts[1].lower()
+        msk = pytz.timezone(TIMEZONE)
+        today_msk = datetime.datetime.now(msk).date()
+        if arg in ("вчера", "yesterday", "-1"):
+            for_date = (today_msk - datetime.timedelta(days=1)).isoformat()
+        elif len(arg) == 10 and arg[4] == "-":
+            for_date = arg
+
+    await send_daily_summary(context.bot, reply_to=chat_id, for_date=for_date)
 
 
 async def handle_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):

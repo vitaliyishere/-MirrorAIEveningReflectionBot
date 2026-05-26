@@ -59,7 +59,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         if TOGGL_API_TOKEN:
             try:
                 from toggl import fetch_today_data, format_toggl_block, toggl_context_for_ai
-                toggl_entries, toggl_projects = await fetch_today_data(TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID)
+                toggl_entries, toggl_projects = await fetch_today_data(TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID, date_str=today)
                 toggl_block = format_toggl_block(toggl_entries, toggl_projects)
                 toggl_context = toggl_context_for_ai(toggl_entries, toggl_projects)
             except Exception as e:

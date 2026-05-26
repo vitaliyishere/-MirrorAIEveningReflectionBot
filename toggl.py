@@ -56,11 +56,12 @@ def _fmt(seconds: int) -> str:
     return f"{m}м"
 
 
-async def fetch_today_data(api_token: str, workspace_id: int) -> tuple[list[dict], dict[int, dict]]:
-    """Возвращает (entries, projects_by_id) за сегодня (МСК = UTC+3)."""
+async def fetch_today_data(api_token: str, workspace_id: int, date_str: str = None) -> tuple[list[dict], dict[int, dict]]:
+    """Возвращает (entries, projects_by_id) за дату date_str (YYYY-MM-DD МСК).
+    Если date_str не передан — берёт сегодня."""
     import datetime, pytz
     msk = pytz.timezone("Europe/Moscow")
-    today_msk = datetime.datetime.now(msk).date().isoformat()
+    today_msk = date_str or datetime.datetime.now(msk).date().isoformat()
 
     auth = aiohttp.BasicAuth(api_token, "api_token")
     timeout = aiohttp.ClientTimeout(total=10)
