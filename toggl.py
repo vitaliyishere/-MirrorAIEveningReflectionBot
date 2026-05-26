@@ -144,8 +144,6 @@ def format_toggl_block(entries: list[dict], projects: dict[int, dict]) -> str:
                 continue
             lines.append(f"  · {desc} · {_fmt(e_secs)}")
 
-        lines.append("")
-
     return "\n".join(lines).rstrip()
 
 
