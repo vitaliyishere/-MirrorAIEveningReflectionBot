@@ -119,7 +119,7 @@ def format_toggl_block(entries: list[dict], projects: dict[int, dict]) -> str:
     # 1 блок ≈ 50 минут
     BLOCK = 3000
 
-    lines = [f"⏱ Сегодня — {_fmt(total_secs)}", ""]
+    lines = [f"*Тайминг за сегодня — {_fmt(total_secs)}*", ""]
 
     for pid, secs in sorted(project_secs.items(), key=lambda x: -x[1]):
         if secs < 60:
@@ -131,11 +131,16 @@ def format_toggl_block(entries: list[dict], projects: dict[int, dict]) -> str:
 
         lines.append(f"{name} {color * blocks}")
 
-        # Подзаписи — сортируем по убыванию длительности
-        for entry in sorted(by_project[pid], key=lambda e: -e.get("duration", 0)):
+        # Мержим подзаписи с одинаковым описанием
+        merged: dict = defaultdict(int)
+        for entry in by_project[pid]:
             desc = (entry.get("description") or "").strip()
             e_secs = entry.get("duration", 0)
-            if e_secs < 60 or not desc:
+            if e_secs > 0 and desc:
+                merged[desc] += e_secs
+
+        for desc, e_secs in sorted(merged.items(), key=lambda x: -x[1]):
+            if e_secs < 60:
                 continue
             lines.append(f"  · {desc} · {_fmt(e_secs)}")
 
