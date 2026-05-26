@@ -113,18 +113,33 @@ async def handle_channel_text(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 def _is_external_note(text: str) -> bool:
     import re
-    if len(text) < 500:
+    if len(text) < 80:
         return False
-    structure_patterns = [
-        r'^#{1,3} ',                        # заголовки markdown
+
+    # Сильные одиночные признаки — достаточно одного
+    strong_patterns = [
+        r'\*\*.+?\*\*',                     # жирный markdown **текст**
         r'^---+$',                          # разделители ---
-        r'^⸻+$',                           # разделители ⸻ (em dash)
-        r'\*\*.+?\*\*',                     # жирный текст
-        r'^\* ',                            # маркированные списки со звёздочкой
-        r'^> ',                             # цитаты
-        r'^[⚡✨💎🔻👉❌✅💡🎯🌟🧘🚀❤️💰😴🪞⸻]',  # строки с emoji-заголовками
+        r'^⸻+$',                           # разделители ⸻
+        r'^—{3,}$',                         # разделители ———
+        r'^_{3,}$',                         # разделители ___
+        r'^#{1,3} ',                        # заголовки markdown
     ]
-    matches = sum(1 for p in structure_patterns if re.search(p, text, re.MULTILINE))
+    for p in strong_patterns:
+        if re.search(p, text, re.MULTILINE):
+            return True
+
+    # Слабые признаки — нужно 2+
+    if len(text) < 200:
+        return False
+    weak_patterns = [
+        r'^\* ',                            # маркированные списки
+        r'^> ',                             # цитаты
+        r'^[⚡✨💎🔻👉❌✅💡🎯🌟🧘🚀❤️💰😴🪞⸻]',  # emoji-заголовки
+        r'^\w.{0,30}:\s*$',                 # строки вида "Например:" или "И это не:"
+        r'\n\n.+\n\n',                      # текст с двойными отступами между блоками
+    ]
+    matches = sum(1 for p in weak_patterns if re.search(p, text, re.MULTILINE))
     return matches >= 2
 
 
