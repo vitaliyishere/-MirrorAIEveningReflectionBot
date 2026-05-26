@@ -196,6 +196,21 @@ async def get_today_reflections(user_id: int) -> list[dict]:
             return [dict(row) for row in rows]
 
 
+async def get_reflections_for_date(user_id: int, date_str: str) -> list[dict]:
+    """Рефлексии за конкретную дату МСК (формат YYYY-MM-DD)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM reflections
+               WHERE user_id = ? AND transcript != '' AND transcript != '❌'
+               AND date(datetime(created_at, '+3 hours')) = ?
+               ORDER BY created_at ASC""",
+            (user_id, date_str)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
 async def get_week_reflections(user_id: int) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

@@ -224,7 +224,21 @@ async def handle_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
     from scheduler import send_daily_summary
-    await send_daily_summary(context.bot, reply_to=update.effective_chat.id)
+    import datetime, pytz
+    from config import TIMEZONE
+
+    for_date = None
+    args = context.args or []
+    if args:
+        arg = args[0].lower()
+        msk = pytz.timezone(TIMEZONE)
+        today_msk = datetime.datetime.now(msk).date()
+        if arg in ("вчера", "yesterday", "-1"):
+            for_date = (today_msk - datetime.timedelta(days=1)).isoformat()
+        elif len(arg) == 10 and arg[4] == "-":  # YYYY-MM-DD
+            for_date = arg
+
+    await send_daily_summary(context.bot, reply_to=update.effective_chat.id, for_date=for_date)
 
 
 async def handle_channel_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):

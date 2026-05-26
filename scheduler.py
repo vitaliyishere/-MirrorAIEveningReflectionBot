@@ -9,17 +9,26 @@ from config import (
     WEEKLY_SUMMARY_DAY, WEEKLY_SUMMARY_HOUR, WEEKLY_SUMMARY_MINUTE,
     TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID,
 )
-from database import get_today_reflections, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
+from database import get_today_reflections, get_reflections_for_date, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
 from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
 
 
-async def send_daily_summary(bot: Bot, reply_to: int = None):
+async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = None):
+    """for_date — строка YYYY-MM-DD в МСК (если None — сегодня)."""
+    import datetime as dt
     user_id = ALLOWED_USER_ID
     reply_chat = reply_to or user_id
-    reflections = await get_today_reflections(user_id)
+
+    if for_date:
+        reflections = await get_reflections_for_date(user_id, for_date)
+        today = for_date
+    else:
+        reflections = await get_today_reflections(user_id)
+        msk = pytz.timezone(TIMEZONE)
+        today = dt.datetime.now(msk).date().isoformat()
 
     if not reflections:
         await bot.send_message(
@@ -46,7 +55,6 @@ async def send_daily_summary(bot: Bot, reply_to: int = None):
         summary = await generate_daily_summary(transcripts, toggl_context=toggl_context)
         chronicle = await generate_chronicle(real_reflections)
         mood = await generate_day_mood(transcripts)
-        today = date.today().isoformat()
         await save_summary(user_id, "daily", summary, today)
 
         completed_tasks = await get_today_completed_tasks(user_id)
