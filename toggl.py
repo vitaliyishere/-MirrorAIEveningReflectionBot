@@ -119,7 +119,7 @@ def format_toggl_block(entries: list[dict], projects: dict[int, dict]) -> str:
     # 1 блок ≈ 50 минут
     BLOCK = 3000
 
-    lines = [f"*Тайминг за сегодня — {_fmt(total_secs)}*", ""]
+    lines = [f"*Тайминг за сегодня — {_fmt(total_secs)}*"]
 
     for pid, secs in sorted(project_secs.items(), key=lambda x: -x[1]):
         if secs < 60:
