@@ -13,6 +13,7 @@ _COLOR_MAP = [
     ("meditation",   "🟪"),
     ("yoga",         "🟩"),
     ("chi",          "🟩"),
+    ("цигун",        "🟩"),
     ("eating",       "🟨"),
     ("food",         "🟨"),
     ("sport",        "🟥"),
