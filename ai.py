@@ -273,8 +273,23 @@ async def transcribe_audio(file_path: str) -> str:
         )
 
     text = transcription.text.strip()
+    text = _fix_transcription(text)
     mem_after = _get_memory_mb()
     logger.info(f"Groq Whisper done | RAM: {mem_after:.0f} MB | {text[:60]}...")
+    return text
+
+
+# Слова которые Whisper стабильно транскрибирует неправильно
+_TRANSCRIPTION_FIXES = [
+    ("цыгун", "цигун"),
+    ("цыгуна", "цигуна"),
+    ("цыгуне", "цигуне"),
+]
+
+def _fix_transcription(text: str) -> str:
+    for wrong, correct in _TRANSCRIPTION_FIXES:
+        text = text.replace(wrong, correct)
+        text = text.replace(wrong.capitalize(), correct.capitalize())
     return text
 
 
