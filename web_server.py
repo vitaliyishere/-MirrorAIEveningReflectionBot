@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 from datetime import date
 from aiohttp import web
@@ -7,6 +8,9 @@ from database import save_completed_tasks
 
 logger = logging.getLogger(__name__)
 API_SECRET = os.getenv("API_SECRET", "mirror-ai-secret")
+
+# Максимально допустимый возраст последнего watchdog-пинга (секунды)
+HEALTH_PING_TIMEOUT = 300  # 5 минут
 
 
 async def handle_tasks(request: web.Request) -> web.Response:
@@ -37,7 +41,20 @@ async def handle_tasks(request: web.Request) -> web.Response:
 
 
 async def handle_health(request: web.Request) -> web.Response:
-    return web.json_response({"ok": True, "status": "alive"})
+    try:
+        import bot as bot_module
+        last_ping = bot_module._last_health_ping
+        age = time.time() - last_ping
+        if age > HEALTH_PING_TIMEOUT:
+            logger.warning(f"Health check FAILED: last ping {age:.0f}s ago")
+            return web.json_response(
+                {"ok": False, "status": "frozen", "last_ping_ago": round(age)},
+                status=503
+            )
+        return web.json_response({"ok": True, "status": "alive", "last_ping_ago": round(age)})
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return web.json_response({"ok": True, "status": "alive"})
 
 
 async def handle_run_queue(request: web.Request) -> web.Response:

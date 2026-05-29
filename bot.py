@@ -1,4 +1,6 @@
 import os
+import sys
+import time
 import logging
 import asyncio
 from aiohttp import web
@@ -15,6 +17,26 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# Watchdog: время последнего успешного пинга Telegram API
+_last_health_ping: float = time.time()
+
+
+async def _watchdog_loop(bot):
+    """Каждые 2 минуты пингует Telegram API через get_me().
+    Если пинг не прошёл — завершает процесс с кодом 1 → Railway рестартует контейнер.
+    При успехе обновляет _last_health_ping → /health endpoint знает что бот жив."""
+    global _last_health_ping
+    logger.info("Watchdog started (interval=120s)")
+    while True:
+        await asyncio.sleep(120)
+        try:
+            await asyncio.wait_for(bot.get_me(), timeout=15)
+            _last_health_ping = time.time()
+            logger.debug("Watchdog ping OK")
+        except Exception as e:
+            logger.error(f"Watchdog ping FAILED: {e} — triggering restart")
+            sys.exit(1)
 
 PORT = int(os.getenv("PORT", 8080))
 
@@ -101,6 +123,7 @@ def main():
                 allowed_updates=["message", "channel_post"]
             )
             _queue_task = asyncio.create_task(queue_loop(tg_app.bot))
+            asyncio.create_task(_watchdog_loop(tg_app.bot))
             logger.info("Bot polling started")
             # Держим до сигнала остановки
             try:
