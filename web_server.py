@@ -170,6 +170,43 @@ async def handle_music_preview(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
+async def handle_delete_summary(request: web.Request) -> web.Response:
+    """Удаляет последнее резюме (daily или weekly) из чата и канала."""
+    secret = request.headers.get("X-Secret", "")
+    if secret != API_SECRET:
+        return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+    summary_type = request.match_info.get("type", "daily")  # daily | weekly
+    if summary_type not in ("daily", "weekly"):
+        return web.json_response({"ok": False, "error": "type must be daily or weekly"}, status=400)
+    try:
+        from database import get_setting
+        from config import CHANNEL_ID
+        bot = request.app["bot"]
+        prefix = f"last_{summary_type}"
+        msg_id = await get_setting(f"{prefix}_msg_id")
+        chat_id = await get_setting(f"{prefix}_chat_id")
+        channel_msg_id = await get_setting(f"{prefix}_channel_msg_id")
+        deleted = []
+        if msg_id and chat_id:
+            try:
+                await bot.delete_message(chat_id=int(chat_id), message_id=int(msg_id))
+                deleted.append(f"chat {chat_id} msg {msg_id}")
+            except Exception as e:
+                logger.warning(f"Could not delete {summary_type} msg: {e}")
+        if channel_msg_id and CHANNEL_ID:
+            try:
+                await bot.delete_message(chat_id=CHANNEL_ID, message_id=int(channel_msg_id))
+                deleted.append(f"channel msg {channel_msg_id}")
+            except Exception as e:
+                logger.warning(f"Could not delete {summary_type} channel msg: {e}")
+        if not deleted:
+            return web.json_response({"ok": False, "error": "No saved message IDs found"}, status=404)
+        return web.json_response({"ok": True, "deleted": deleted})
+    except Exception as e:
+        logger.error(f"Delete summary error: {e}", exc_info=True)
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
 async def handle_spotify_auth(request: web.Request) -> web.Response:
     """Редиректит на страницу авторизации Spotify. Защищён секретом."""
     secret = request.rel_url.query.get("secret", "")
@@ -216,6 +253,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/health", handle_health)
     app.router.add_post("/admin/queue", handle_run_queue)
     app.router.add_post("/admin/cleanup", handle_cleanup_db)
+    app.router.add_post("/admin/delete-summary/{type}", handle_delete_summary)
     app.router.add_get("/spotify/auth", handle_spotify_auth)
     app.router.add_get("/spotify/callback", handle_spotify_callback)
     app.router.add_get("/admin/music-preview", handle_music_preview)

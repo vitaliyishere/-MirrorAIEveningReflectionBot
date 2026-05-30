@@ -161,10 +161,13 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
                 for n in notes
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"
-        await bot.send_message(chat_id=reply_chat, text=tg_text, parse_mode="Markdown")
+        daily_msg = await bot.send_message(chat_id=reply_chat, text=tg_text, parse_mode="Markdown")
+        await set_setting("last_daily_msg_id", str(daily_msg.message_id))
+        await set_setting("last_daily_chat_id", str(reply_chat))
         # Автоматический репорт по расписанию — дублируем в канал если запрос был из лички
         if not reply_to and CHANNEL_ID:
-            await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
+            ch_msg = await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
+            await set_setting("last_daily_channel_msg_id", str(ch_msg.message_id))
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
         logger.info(f"Daily summary sent to {reply_chat}")
 
@@ -274,9 +277,12 @@ async def send_weekly_summary(bot: Bot):
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)
         tg_text = f"🗓 *Резюме недели — {today}*\n\n{fmt(summary)}"
-        await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
+        weekly_msg = await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
+        await set_setting("last_weekly_msg_id", str(weekly_msg.message_id))
+        await set_setting("last_weekly_chat_id", str(user_id))
         if CHANNEL_ID:
-            await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
+            ch_msg = await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
+            await set_setting("last_weekly_channel_msg_id", str(ch_msg.message_id))
         await save_to_notion(summary, "weekly")
         logger.info(f"Weekly summary sent to {user_id}")
     except Exception as e:
