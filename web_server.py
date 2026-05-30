@@ -124,6 +124,42 @@ async def handle_cleanup_db(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
+async def handle_music_preview(request: web.Request) -> web.Response:
+    """Превью музыкального блока резюме для отладки."""
+    secret = request.headers.get("X-Secret", "")
+    if secret != API_SECRET:
+        return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+    try:
+        from config import ALLOWED_USER_ID
+        from database import get_today_music
+        from spotify import get_saved_today
+        from ai import generate_music_mood
+
+        saved_today = await get_saved_today()
+        manual = await get_today_music(ALLOWED_USER_ID)
+        all_tracks = list(saved_today) + list(manual or [])
+
+        lines = []
+        if saved_today:
+            lines.append("Понравилось сегодня:")
+            for m in saved_today:
+                lines.append(f"❤️ {m['track']}" + (f" — {m['artist']}" if m.get('artist') else ""))
+        if manual:
+            if saved_today:
+                lines.append("Отмечено вручную:")
+            for m in manual:
+                lines.append(f"🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else ""))
+        if all_tracks:
+            comment = await generate_music_mood(all_tracks)
+            if comment:
+                lines.append(comment)
+
+        return web.json_response({"ok": True, "block": "\n".join(lines), "saved": saved_today, "manual": manual})
+    except Exception as e:
+        logger.error(f"Music preview error: {e}", exc_info=True)
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
 async def handle_spotify_auth(request: web.Request) -> web.Response:
     """Редиректит на страницу авторизации Spotify. Защищён секретом."""
     secret = request.rel_url.query.get("secret", "")
@@ -172,4 +208,5 @@ def create_app(bot=None) -> web.Application:
     app.router.add_post("/admin/cleanup", handle_cleanup_db)
     app.router.add_get("/spotify/auth", handle_spotify_auth)
     app.router.add_get("/spotify/callback", handle_spotify_callback)
+    app.router.add_get("/admin/music-preview", handle_music_preview)
     return app
