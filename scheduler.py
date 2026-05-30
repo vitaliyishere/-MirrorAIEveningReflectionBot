@@ -114,9 +114,24 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         except Exception as e:
             logger.warning(f"Spotify saved today failed: {e}")
 
-        all_music_for_mood = list(saved_today) + list(music or [])
+        # Все треки, прослушанные сегодня (для AI-настроения)
+        recently_played = []
+        try:
+            from spotify import get_recently_played_today
+            recently_played = await get_recently_played_today()
+        except Exception as e:
+            logger.warning(f"Spotify recently-played failed: {e}")
 
-        if saved_today or music:
+        # Для AI-mood — всё что слушал: recently_played + liked + manual (дедупликация)
+        mood_seen: set = set()
+        all_music_for_mood = []
+        for m in list(recently_played) + list(saved_today) + list(music or []):
+            key = f"{m['track']}|{m.get('artist', '')}"
+            if key not in mood_seen:
+                mood_seen.add(key)
+                all_music_for_mood.append(m)
+
+        if saved_today or music or recently_played:
             tg_text += "\n\n*Музыка дня*"
 
             if saved_today:
@@ -130,7 +145,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
                 for m in music:
                     tg_text += f"\n🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
 
-            # AI-комментарий о музыкальном настроении дня
+            # AI-комментарий о музыкальном настроении дня (по всему что слушал)
             if all_music_for_mood:
                 try:
                     music_comment = await generate_music_mood(all_music_for_mood)

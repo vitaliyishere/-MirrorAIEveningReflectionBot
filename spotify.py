@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 SPOTIFY_TRACK_RE = re.compile(r'https?://open\.spotify\.com/track/([\w]+)[^\s]*')
 SPOTIFY_CALLBACK_URL = "https://mirror-ai-reflection-bot-production.up.railway.app/spotify/callback"
-SPOTIFY_SCOPE = "user-library-read"
+SPOTIFY_SCOPE = "user-library-read user-read-recently-played"
 
 # ─── Client Credentials token cache (для публичных данных) ───────────────────
 _token: Optional[str] = None
@@ -179,6 +179,59 @@ async def get_saved_today() -> list[dict]:
         logger.error(f"Spotify saved today error: {e}")
 
     return saved
+
+
+async def get_recently_played_today() -> list[dict]:
+    """Возвращает уникальные треки, прослушанные сегодня (МСК)."""
+    import datetime, pytz
+    token = await _get_user_token()
+    if not token:
+        return []
+
+    msk = pytz.timezone("Europe/Moscow")
+    today_str = datetime.datetime.now(msk).date().isoformat()
+    today_start = msk.localize(datetime.datetime.strptime(today_str, "%Y-%m-%d"))
+    after_ms = int(today_start.timestamp() * 1000)
+
+    seen: set[str] = set()
+    tracks: list[dict] = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {token}"}
+            async with session.get(
+                "https://api.spotify.com/v1/me/player/recently-played",
+                headers=headers,
+                params={"limit": 50, "after": after_ms},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Spotify recently-played error: {resp.status}")
+                    return []
+                data = await resp.json()
+
+        for item in data.get("items", []):
+            played_at = item.get("played_at", "")
+            try:
+                dt = datetime.datetime.fromisoformat(played_at.replace("Z", "+00:00"))
+                if dt.astimezone(msk).date().isoformat() != today_str:
+                    continue
+            except Exception:
+                continue
+            track = item.get("track") or {}
+            if not track.get("name"):
+                continue
+            artist = ", ".join(a["name"] for a in track.get("artists", []))
+            key = f"{track['name']}|{artist}"
+            if key in seen:
+                continue
+            seen.add(key)
+            tracks.append({"track": track["name"], "artist": artist})
+
+        logger.info(f"Spotify recently-played today: {len(tracks)} unique tracks")
+    except Exception as e:
+        logger.error(f"Spotify recently-played error: {e}")
+
+    return tracks
 
 
 def extract_spotify_url(text: str) -> Optional[str]:

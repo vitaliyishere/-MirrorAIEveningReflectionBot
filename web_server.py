@@ -135,9 +135,19 @@ async def handle_music_preview(request: web.Request) -> web.Response:
         from spotify import get_saved_today
         from ai import generate_music_mood
 
+        from spotify import get_recently_played_today
         saved_today = await get_saved_today()
+        recently_played = await get_recently_played_today()
         manual = await get_today_music(ALLOWED_USER_ID)
-        all_tracks = list(saved_today) + list(manual or [])
+
+        # Дедупликация для AI-mood
+        mood_seen: set = set()
+        all_tracks = []
+        for m in list(recently_played) + list(saved_today) + list(manual or []):
+            key = f"{m['track']}|{m.get('artist', '')}"
+            if key not in mood_seen:
+                mood_seen.add(key)
+                all_tracks.append(m)
 
         lines = []
         if saved_today:
@@ -154,7 +164,7 @@ async def handle_music_preview(request: web.Request) -> web.Response:
             if comment:
                 lines.append(comment)
 
-        return web.json_response({"ok": True, "block": "\n".join(lines), "saved": saved_today, "manual": manual})
+        return web.json_response({"ok": True, "block": "\n".join(lines), "saved": saved_today, "recently_played": recently_played, "manual": manual})
     except Exception as e:
         logger.error(f"Music preview error: {e}", exc_info=True)
         return web.json_response({"ok": False, "error": str(e)}, status=500)
