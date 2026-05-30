@@ -10,7 +10,7 @@ from config import (
     TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID,
 )
 from database import get_today_reflections, get_reflections_for_date, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
-from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood
+from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood, generate_music_mood
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -107,15 +107,18 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
 
         # 4. Музыка дня
         if music:
-            from spotify import format_audio_features
             music_lines = []
             for m in music:
                 line = f"🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
-                af = format_audio_features(m)
-                if af:
-                    line += f"\n    _{af}_"
                 music_lines.append(line)
             tg_text += f"\n\n*Музыка дня*\n" + "\n".join(music_lines)
+            # AI-комментарий о музыкальном настроении дня
+            try:
+                music_comment = await generate_music_mood(music)
+                if music_comment:
+                    tg_text += f"\n_{music_comment}_"
+            except Exception as e:
+                logger.warning(f"Music mood generation failed: {e}")
 
         # 5. Заметки (только заголовки — полный текст в Notion тогглах)
         if notes:

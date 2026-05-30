@@ -1,11 +1,13 @@
+from __future__ import annotations
 import os
 import asyncio
 import logging
+from typing import Optional
 from config import AUDIO_TEMP_DIR, GROQ_API_KEY, GROQ_MODEL, OPENROUTER_API_KEY, OPENROUTER_SUMMARY_MODEL
 
 # Если OpenRouter недоступен (кончились деньги и т.п.) — здесь будет причина.
 # scheduler.py проверяет это поле и уведомляет пользователя.
-openrouter_error: str | None = None
+openrouter_error: Optional[str] = None
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +355,51 @@ async def generate_daily_summary(transcripts: list[str], toggl_context: str = ""
     # Фолбэк — Groq (бесплатный, текущий)
     logger.info("Daily summary via Groq (fallback)")
     return await groq_generate(prompt=prompt, system=DAILY_SYSTEM_PROMPT)
+
+
+async def generate_music_mood(tracks: list[dict]) -> str:
+    """Генерирует 1-2 предложения о музыкальном настроении дня на основе треков.
+    tracks — список dict с полями track, artist (и опционально album, release_date)."""
+    if not tracks:
+        return ""
+
+    tracks_text = "\n".join(
+        f"- {t['track']}" + (f" — {t['artist']}" if t.get('artist') else "")
+        + (f" ({t['album'][:40]})" if t.get('album') else "")
+        for t in tracks
+    )
+
+    system = (
+        "Ты анализируешь плейлист одного человека за день и пишешь одно предложение "
+        "о музыкальном настроении дня. "
+        "Пиши наблюдение — не оценку. Мужской род. Без воды и клише вроде 'разнообразный вкус'. "
+        "Хорошие примеры:\n"
+        "— Сегодня ты тяготел к чему-то мощному и театральному — Queen и Muse в одном дне говорят сами за себя.\n"
+        "— Весь день фоном шёл lo-fi и ambient — похоже, искал тишину внутри шума.\n"
+        "— Резкий переход: с утра классика, к вечеру тяжёлый рок — что-то менялось в течение дня.\n"
+        "Только одно предложение. Никаких вступлений и пояснений."
+    )
+    prompt = f"Треки дня:\n{tracks_text}"
+
+    # Используем OpenRouter если доступен, иначе Groq
+    if OPENROUTER_API_KEY and not openrouter_error:
+        try:
+            return await _openrouter_generate(prompt=prompt, system=system)
+        except Exception as e:
+            logger.warning(f"OpenRouter music mood error: {e}")
+
+    from groq import AsyncGroq
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=80,
+        temperature=0.8,
+    )
+    return response.choices[0].message.content.strip()
 
 
 async def generate_day_digest(transcripts: list[str]) -> str:
