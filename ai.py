@@ -1,7 +1,11 @@
 import os
 import asyncio
 import logging
-from config import AUDIO_TEMP_DIR, GROQ_API_KEY, GROQ_MODEL
+from config import AUDIO_TEMP_DIR, GROQ_API_KEY, GROQ_MODEL, OPENROUTER_API_KEY, OPENROUTER_SUMMARY_MODEL
+
+# Если OpenRouter недоступен (кончились деньги и т.п.) — здесь будет причина.
+# scheduler.py проверяет это поле и уведомляет пользователя.
+openrouter_error: str | None = None
 
 logger = logging.getLogger(__name__)
 
@@ -293,13 +297,61 @@ def _fix_transcription(text: str) -> str:
     return text
 
 
+async def _openrouter_generate(prompt: str, system: str) -> str:
+    """Генерирует текст через OpenRouter API (GPT-4o по умолчанию)."""
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://mirror-ai.app",
+                "X-Title": "Mirror AI Reflection Bot",
+            },
+            json={
+                "model": OPENROUTER_SUMMARY_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": prompt},
+                ],
+                "max_tokens": 800,
+                "temperature": 0.7,
+            },
+            timeout=aiohttp.ClientTimeout(total=60),
+        ) as resp:
+            data = await resp.json()
+            if resp.status == 402:
+                raise RuntimeError(f"payment_required: баланс OpenRouter исчерпан")
+            if resp.status == 401:
+                raise RuntimeError(f"unauthorized: неверный ключ OpenRouter")
+            if resp.status != 200:
+                raise RuntimeError(f"OpenRouter HTTP {resp.status}: {data}")
+            return data["choices"][0]["message"]["content"].strip()
+
+
 async def generate_daily_summary(transcripts: list[str], toggl_context: str = "") -> str:
+    global openrouter_error
     combined = "\n\n---\n\n".join(
         f"[{i+1}] {t}" for i, t in enumerate(transcripts)
     )
     prompt = f"Транскрипции за сегодня:\n\n{combined}"
     if toggl_context:
         prompt += f"\n\n---\nКОНТЕКСТ ДНЯ (только для понимания, категорически НЕ упоминать в тексте резюме — тайминг уже показан отдельным блоком): {toggl_context}"
+
+    # Пробуем OpenRouter (GPT-4o) если ключ задан и ошибки не было раньше
+    if OPENROUTER_API_KEY and not openrouter_error:
+        try:
+            result = await _openrouter_generate(prompt=prompt, system=DAILY_SYSTEM_PROMPT)
+            logger.info(f"Daily summary via OpenRouter ({OPENROUTER_SUMMARY_MODEL})")
+            return result
+        except RuntimeError as e:
+            openrouter_error = str(e)
+            logger.error(f"OpenRouter failed, falling back to Groq: {e}")
+        except Exception as e:
+            logger.warning(f"OpenRouter error (non-critical), falling back to Groq: {e}")
+
+    # Фолбэк — Groq (бесплатный, текущий)
+    logger.info("Daily summary via Groq (fallback)")
     return await groq_generate(prompt=prompt, system=DAILY_SYSTEM_PROMPT)
 
 

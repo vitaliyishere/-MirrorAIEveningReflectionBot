@@ -126,6 +126,22 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
             await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
         logger.info(f"Daily summary sent to {reply_chat}")
+
+        # Проверяем: не упал ли OpenRouter во время генерации?
+        import ai as ai_module
+        if ai_module.openrouter_error:
+            err = ai_module.openrouter_error
+            await bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"⚠️ *OpenRouter недоступен*\n\n"
+                    f"Резюме сгенерировано через Groq (запасная модель).\n"
+                    f"Причина: `{err}`\n\n"
+                    f"Пополни баланс на openrouter.ai или скажи мне переключиться на Anthropic API."
+                ),
+                parse_mode="Markdown"
+            )
+            logger.warning(f"OpenRouter error notified to user: {err}")
     except Exception as e:
         logger.error(f"Error generating daily summary: {e}")
         await bot.send_message(
