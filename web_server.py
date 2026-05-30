@@ -124,6 +124,45 @@ async def handle_cleanup_db(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
+async def handle_spotify_auth(request: web.Request) -> web.Response:
+    """Редиректит на страницу авторизации Spotify. Защищён секретом."""
+    secret = request.rel_url.query.get("secret", "")
+    if secret != API_SECRET:
+        return web.Response(text="Unauthorized", status=401)
+    from spotify import get_auth_url
+    raise web.HTTPFound(get_auth_url())
+
+
+async def handle_spotify_callback(request: web.Request) -> web.Response:
+    """Принимает code от Spotify, обменивает на токены."""
+    code = request.rel_url.query.get("code")
+    error = request.rel_url.query.get("error")
+    if error:
+        logger.error(f"Spotify OAuth error: {error}")
+        return web.Response(text=f"❌ Spotify отказал: {error}", content_type="text/html")
+    if not code:
+        return web.Response(text="❌ Нет code в запросе", status=400)
+    from spotify import exchange_code
+    ok = await exchange_code(code)
+    if ok:
+        # Уведомляем пользователя в Telegram
+        try:
+            from config import ALLOWED_USER_ID
+            bot = request.app.get("bot")
+            if bot:
+                await bot.send_message(
+                    chat_id=ALLOWED_USER_ID,
+                    text="✅ Spotify подключён! Теперь в резюме дня будут треки из 'Нравится'."
+                )
+        except Exception as e:
+            logger.warning(f"Could not notify user: {e}")
+        return web.Response(
+            text="<h2>✅ Spotify подключён!</h2><p>Можно закрыть эту страницу.</p>",
+            content_type="text/html"
+        )
+    return web.Response(text="❌ Не удалось обменять code. Проверь логи.", status=500)
+
+
 def create_app(bot=None) -> web.Application:
     app = web.Application()
     app["bot"] = bot
@@ -131,4 +170,6 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/health", handle_health)
     app.router.add_post("/admin/queue", handle_run_queue)
     app.router.add_post("/admin/cleanup", handle_cleanup_db)
+    app.router.add_get("/spotify/auth", handle_spotify_auth)
+    app.router.add_get("/spotify/callback", handle_spotify_callback)
     return app

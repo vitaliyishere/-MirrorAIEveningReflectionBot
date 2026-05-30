@@ -106,19 +106,38 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
             tg_text += f"\n\n*Хроника дня*\n{fmt(chronicle)}"
 
         # 4. Музыка дня
-        if music:
-            music_lines = []
-            for m in music:
-                line = f"🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
-                music_lines.append(line)
-            tg_text += f"\n\n*Музыка дня*\n" + "\n".join(music_lines)
+        # Треки из "Нравится" Spotify (добавлены сегодня)
+        saved_today = []
+        try:
+            from spotify import get_saved_today
+            saved_today = await get_saved_today()
+        except Exception as e:
+            logger.warning(f"Spotify saved today failed: {e}")
+
+        all_music_for_mood = list(saved_today) + list(music or [])
+
+        if saved_today or music:
+            tg_text += "\n\n*Музыка дня*"
+
+            if saved_today:
+                tg_text += "\n_Понравилось сегодня:_"
+                for m in saved_today:
+                    tg_text += f"\n❤️ {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
+
+            if music:
+                if saved_today:
+                    tg_text += "\n_Отмечено вручную:_"
+                for m in music:
+                    tg_text += f"\n🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
+
             # AI-комментарий о музыкальном настроении дня
-            try:
-                music_comment = await generate_music_mood(music)
-                if music_comment:
-                    tg_text += f"\n_{music_comment}_"
-            except Exception as e:
-                logger.warning(f"Music mood generation failed: {e}")
+            if all_music_for_mood:
+                try:
+                    music_comment = await generate_music_mood(all_music_for_mood)
+                    if music_comment:
+                        tg_text += f"\n_{music_comment}_"
+                except Exception as e:
+                    logger.warning(f"Music mood generation failed: {e}")
 
         # 5. Заметки (только заголовки — полный текст в Notion тогглах)
         if notes:

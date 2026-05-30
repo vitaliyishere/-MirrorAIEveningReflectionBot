@@ -9,10 +9,16 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 SPOTIFY_TRACK_RE = re.compile(r'https?://open\.spotify\.com/track/([\w]+)[^\s]*')
+SPOTIFY_CALLBACK_URL = "https://mirror-ai-reflection-bot-production.up.railway.app/spotify/callback"
+SPOTIFY_SCOPE = "user-library-read"
 
-# ─── Token cache (Client Credentials, живёт 3600с) ───────────────────────────
+# ─── Client Credentials token cache (для публичных данных) ───────────────────
 _token: Optional[str] = None
 _token_expires: float = 0.0
+
+# ─── User token cache (для личной библиотеки) ────────────────────────────────
+_user_token: Optional[str] = None
+_user_token_expires: float = 0.0
 
 
 async def _get_token() -> Optional[str]:
@@ -43,6 +49,136 @@ async def _get_token() -> Optional[str]:
     except Exception as e:
         logger.error(f"Spotify token fetch failed: {e}")
         return None
+
+
+def get_auth_url() -> str:
+    """Возвращает URL для OAuth авторизации пользователя."""
+    from config import SPOTIFY_CLIENT_ID
+    import urllib.parse
+    params = urllib.parse.urlencode({
+        "client_id": SPOTIFY_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": SPOTIFY_CALLBACK_URL,
+        "scope": SPOTIFY_SCOPE,
+    })
+    return f"https://accounts.spotify.com/authorize?{params}"
+
+
+async def exchange_code(code: str) -> bool:
+    """Обменивает code на refresh_token и сохраняет в БД."""
+    from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+    from database import set_setting
+    creds = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://accounts.spotify.com/api/token",
+                headers={"Authorization": f"Basic {creds}"},
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": SPOTIFY_CALLBACK_URL,
+                },
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.error(f"Spotify code exchange failed: {resp.status} {body}")
+                    return False
+                data = await resp.json()
+                await set_setting("spotify_refresh_token", data["refresh_token"])
+                # Сразу кешируем access token
+                global _user_token, _user_token_expires
+                _user_token = data["access_token"]
+                _user_token_expires = time.time() + data.get("expires_in", 3600)
+                logger.info("Spotify OAuth: refresh token saved")
+                return True
+    except Exception as e:
+        logger.error(f"Spotify code exchange error: {e}")
+        return False
+
+
+async def _get_user_token() -> Optional[str]:
+    """Возвращает актуальный user access token, обновляет через refresh token."""
+    global _user_token, _user_token_expires
+    from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+    from database import get_setting
+
+    if _user_token and time.time() < _user_token_expires - 60:
+        return _user_token
+
+    refresh_token = await get_setting("spotify_refresh_token")
+    if not refresh_token:
+        return None
+
+    creds = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://accounts.spotify.com/api/token",
+                headers={"Authorization": f"Basic {creds}"},
+                data={"grant_type": "refresh_token", "refresh_token": refresh_token},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Spotify token refresh failed: {resp.status}")
+                    return None
+                data = await resp.json()
+                _user_token = data["access_token"]
+                _user_token_expires = time.time() + data.get("expires_in", 3600)
+                # Spotify иногда выдаёт новый refresh_token
+                if "refresh_token" in data:
+                    from database import set_setting
+                    await set_setting("spotify_refresh_token", data["refresh_token"])
+                logger.info("Spotify user token refreshed")
+                return _user_token
+    except Exception as e:
+        logger.error(f"Spotify user token refresh error: {e}")
+        return None
+
+
+async def get_saved_today() -> list[dict]:
+    """Возвращает треки, добавленные в 'Нравится' сегодня (МСК)."""
+    import datetime, pytz
+    token = await _get_user_token()
+    if not token:
+        return []
+
+    msk = pytz.timezone("Europe/Moscow")
+    today = datetime.datetime.now(msk).date().isoformat()
+
+    saved = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {token}"}
+            # Берём последние 50 сохранённых треков (с запасом)
+            async with session.get(
+                "https://api.spotify.com/v1/me/tracks",
+                headers=headers,
+                params={"limit": 50, "market": "RU"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    logger.error(f"Spotify saved tracks error: {resp.status}")
+                    return []
+                data = await resp.json()
+
+        for item in data.get("items", []):
+            added_at = item.get("added_at", "")[:10]  # YYYY-MM-DD
+            if added_at != today:
+                break  # треки отсортированы по дате, дальше уже не сегодня
+            track = item.get("track", {})
+            if not track:
+                continue
+            saved.append({
+                "track": track["name"],
+                "artist": ", ".join(a["name"] for a in track.get("artists", [])),
+                "album": track.get("album", {}).get("name", ""),
+            })
+    except Exception as e:
+        logger.error(f"Spotify saved today error: {e}")
+
+    return saved
 
 
 def extract_spotify_url(text: str) -> Optional[str]:
