@@ -107,11 +107,15 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
 
         # 4. Музыка дня
         if music:
-            music_lines = "\n".join(
-                f"🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
-                for m in music
-            )
-            tg_text += f"\n\n*Музыка дня*\n{music_lines}"
+            from spotify import format_audio_features
+            music_lines = []
+            for m in music:
+                line = f"🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
+                af = format_audio_features(m)
+                if af:
+                    line += f"\n    _{af}_"
+                music_lines.append(line)
+            tg_text += f"\n\n*Музыка дня*\n" + "\n".join(music_lines)
 
         # 5. Заметки (только заголовки — полный текст в Notion тогглах)
         if notes:
