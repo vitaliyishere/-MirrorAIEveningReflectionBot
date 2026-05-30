@@ -11,7 +11,7 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 DAILY_SUMMARY_HOUR = 22
 DAILY_SUMMARY_MINUTE = 0
-WEEKLY_SUMMARY_DAY = 6   # воскресенье
+WEEKLY_SUMMARY_DAY = 0   # воскресенье (PTB: 0=Sun, 1=Mon, ..., 6=Sat)
 WEEKLY_SUMMARY_HOUR = 20
 WEEKLY_SUMMARY_MINUTE = 0
 
