@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from datetime import datetime, date
 import pytz
@@ -26,6 +27,20 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         reflections = await get_reflections_for_date(user_id, for_date)
         today = for_date
     else:
+        # Форсируем обработку очереди перед генерацией — до 60 секунд ждём pending аудио
+        unprocessed = await get_unprocessed_reflections(user_id)
+        if unprocessed:
+            logger.info(f"Pre-summary queue flush: {len(unprocessed)} pending items")
+            deadline = dt.datetime.now().timestamp() + 60
+            while dt.datetime.now().timestamp() < deadline:
+                pending = await get_unprocessed_reflections(user_id)
+                if not pending:
+                    break
+                await process_queue(bot)
+                await asyncio.sleep(3)
+            remaining = await get_unprocessed_reflections(user_id)
+            if remaining:
+                logger.warning(f"Pre-summary flush: {len(remaining)} items still pending after 60s")
         reflections = await get_today_reflections(user_id)
         msk = pytz.timezone(TIMEZONE)
         today = dt.datetime.now(msk).date().isoformat()
@@ -87,11 +102,26 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
 
         # 1. Сделано сегодня — первым
         if completed_tasks:
+            import re as _re
             tasks_clean = completed_tasks.strip()
             if tasks_clean.upper().startswith("TASKS:"):
                 tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
             if tasks_clean:
-                lines = "\n".join(f"• {l.strip()}" for l in tasks_clean.split("\n") if l.strip())
+                raw_lines = [l.strip() for l in tasks_clean.split("\n") if l.strip()]
+                # Пытаемся разобрать время из строк вида "09:00 Задача" или "09:00 - Задача"
+                _time_re = _re.compile(r'^(\d{1,2}:\d{2})\s*[-–]?\s*(.+)$')
+                parsed = []
+                has_times = False
+                for l in raw_lines:
+                    m = _time_re.match(l)
+                    if m:
+                        has_times = True
+                        parsed.append((m.group(1), m.group(2).strip()))
+                    else:
+                        parsed.append((None, l))
+                if has_times:
+                    parsed.sort(key=lambda x: x[0] or "99:99")
+                lines = "\n".join(f"• {name}" for _, name in parsed)
                 tg_text += f"✅ *Сделано сегодня*\n{lines}\n\n"
 
         # 2. Время дня (Toggl)
