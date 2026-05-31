@@ -27,7 +27,7 @@ def _get_memory_mb() -> float:
     return 0.0
 
 
-async def groq_generate(prompt: str, system: str) -> str:
+async def groq_generate(prompt: str, system: str, max_tokens: int = 800) -> str:
     from groq import AsyncGroq
     client = AsyncGroq(api_key=GROQ_API_KEY)
     response = await client.chat.completions.create(
@@ -36,7 +36,7 @@ async def groq_generate(prompt: str, system: str) -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=800,
+        max_tokens=max_tokens,
         temperature=0.7
     )
     return response.choices[0].message.content
@@ -200,15 +200,27 @@ async def generate_chronicle(reflections: list[dict]) -> str:
         return ""
 
     # Формируем описание кластеров для Groq
+    from datetime import datetime, timedelta, timezone
+    msk_offset = timedelta(hours=3)
+
     blocks_text = []
     for cluster in clusters:
-        start = cluster[0]["created_at"][11:16]
-        end = cluster[-1]["created_at"][11:16]
+        # Конвертируем UTC → МСК для отображения времени
+        def to_msk(ts: str) -> str:
+            try:
+                dt = datetime.fromisoformat(ts).replace(tzinfo=timezone.utc) + msk_offset
+                return dt.strftime("%H:%M")
+            except Exception:
+                return ts[11:16]
+
+        start = to_msk(cluster[0]["created_at"])
+        end = to_msk(cluster[-1]["created_at"])
         texts = " ".join(r["transcript"] for r in cluster if r.get("transcript"))
         blocks_text.append(f"[{start}–{end}]\n{texts}")
 
+    logger.info(f"Chronicle: {len(clusters)} clusters → generating")
     prompt = "\n\n---\n\n".join(blocks_text)
-    return await groq_generate(prompt=prompt, system=CHRONICLE_SYSTEM_PROMPT)
+    return await groq_generate(prompt=prompt, system=CHRONICLE_SYSTEM_PROMPT, max_tokens=1500)
 
 
 DAY_DIGEST_SYSTEM_PROMPT = """Сожми голосовые сообщения одного дня в компактный дайджест — максимум 10 коротких пунктов.
