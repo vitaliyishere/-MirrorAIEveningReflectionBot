@@ -624,6 +624,7 @@ CRAFT PAPER: visible grain, worn edges, coffee stains, dark amber-brown — like
                     ]
                 }],
                 "max_tokens": 4096,
+                "size": "1024x1536",
             },
             timeout=aiohttp.ClientTimeout(total=240),
         ) as resp:
