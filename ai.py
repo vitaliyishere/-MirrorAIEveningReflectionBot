@@ -561,50 +561,62 @@ async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> 
     insight = day_data.get("insight") or "Каждый день — данные для следующего"
     date_str = day_data.get("date_str") or "Сегодня"
 
-    prompt = f"""Turn the person from the reference photo into a grotesque humorous caricature sketch for a personal daily reflection poster.
+    prompt = f"""Create a personal daily reflection character sheet poster — grotesque humorous caricature style on aged kraft paper.
 
-CARICATURE STYLE: strongly exaggerated anatomy (big expressive head, elongated lanky body, oversized hands, spindly legs), dramatic personality, messy energetic ink lines, sketchbook feel. Keep the face recognizable — same beard, glasses, hairstyle, but exaggerated for comic effect. Confident energetic pose, looking busy and heroic.
+=== CENTRAL FIGURE ===
+Draw the person from the reference photo as a full-body caricature: big expressive head, lanky body, oversized hands, dynamic pose (holding laptop or phone, mid-action). Keep face recognizable — same beard, glasses, hairstyle. Confident and slightly chaotic energy. Full body head-to-feet, NEVER cropped.
 
-CRITICAL — FULL BODY: The caricature MUST show the complete figure from head to feet. Full body visible, not cropped. Legs and feet fully drawn. Figure takes up the CENTER vertical strip of the image from top annotation area down to bottom strip.
+=== PAGE FORMAT ===
+Tall vertical 9:16 format (Instagram Stories, 1080×1920). Three zones top-to-bottom:
+1. TOP HEADER BAND — dark strip with title text
+2. MIDDLE ZONE — full-body caricature in center + 4 annotation boxes around it
+3. BOTTOM FOOTER BAND — dark strip with Mirror AI info
 
-COLORS — vibrant and rich:
-- Deep amber-brown kraft paper texture as background (NOT pale yellow — dark, tactile, aged)
-- Multiple saturated colors: burgundy red for headers, forest green for bullet lists, cobalt blue for bar chart, warm amber for skin/watercolor fills, purple for music section
-- Bold watercolor washes, punchy and saturated
-- Overall: like a hand-painted vintage zine, rich texture with coffee ring stains and worn edges
+=== ZONE 1 — TOP HEADER (dark amber band) ===
+Large bold handwritten text: «РЕФЛЕКСИЯ ДНЯ»
+Below it smaller: «ВИТАЛИК» with tiny hand-drawn crown ♛
 
-LAYOUT: Tall vertical portrait 2:3 format (iPhone screen ratio). Full-body caricature figure in the CENTER column. Annotation boxes on LEFT and RIGHT sides. Nothing cropped.
+=== ZONE 2 — MIDDLE (aged kraft paper background) ===
 
-ANNOTATIONS — handwritten Russian, slightly messy and personal:
-
-TOP: «ВИТАЛИК» header with hand-drawn crown ♛
-
-LEFT COLUMN — box with burgundy header "СЕГОДНЯ:":
+TOP-LEFT BOX (burgundy red border + header «СЕГОДНЯ:»):
+Short punchy bullet lines — max 5-6 words each, NO long sentences:
 {activities_str}
 
-RIGHT COLUMN — box with cobalt header "ВРЕМЯ ДНЯ:" + rough hand-drawn bar chart:
+TOP-RIGHT BOX (cobalt blue border + header «ВРЕМЯ ДНЯ:»):
+Hand-drawn horizontal bar chart, each bar labeled:
 {toggl_str or toggl_fallback}
 
-SPEECH BUBBLE from caricature: «{quote}»
+CARICATURE CENTER — full body figure with these arrow annotations:
+→ «промпт-инженер» pointing to head
+→ «борода на связи» pointing to beard
+→ «руки-загребалки» pointing to hands
+→ «ноги к дедлайну» pointing to legs
 
-BOTTOM-LEFT — box with green header "МУЗЫКА ДНЯ:" + vinyl record doodle:
+SPEECH BUBBLE from mouth: «{quote}»
+
+BOTTOM-LEFT BOX (green border + header «МУЗЫКА ДНЯ:» + small vinyl record drawing):
+Each track on its own short line:
 {music_str or music_fallback}
 
-BOTTOM-RIGHT — box with purple header "ИНСАЙТ:":
+BOTTOM-RIGHT BOX (purple border + header «ИНСАЙТ:»):
 {insight}
 
-FUNNY ARROWS with absurd Russian captions pointing to body parts:
-→ «промпт-инженер» (to head/brain)
-→ «руки-загребалки» (to hands)
-→ «борода на связи» (to beard)
-→ «ноги к дедлайну» (to legs)
+=== ZONE 3 — BOTTOM FOOTER (dark amber band) ===
+Left side: mirror emoji 🪞 then «Mirror AI» in bold
+Center: «{date_str}»
+Right side: small text «Рефлексия дня»
 
-SMALL INK VIGNETTES scattered: laptop with glow, coffee cup, music notes, tiny meditating figure
+=== TEXT STYLE ===
+All text in Russian Cyrillic. Handwritten/hand-lettered style — bold, clear, slightly imperfect. Like the style in Адель/Виталик character sheets: short punchy labels, NOT long paragraphs. Every word readable at a glance. Headers bold and colored, body text smaller but crisp.
 
-BOTTOM STRIP (slightly darker band):
-🪞 Mirror AI  ·  {date_str}  ·  Рефлексия дня
+=== COLORS ===
+- Background: dark warm amber kraft paper with visible grain and coffee stains
+- Headers: each box has its own color (red, blue, green, purple)
+- Caricature: warm watercolor washes, amber and rust tones
+- Footer/header bands: slightly darker amber
 
-CRAFT PAPER: visible grain, worn edges, coffee stains, dark amber-brown — like a real handmade zine."""
+=== STYLE ===
+Messy expressive ink lines + selective watercolor fills. Vintage illustrated zine energy. Every annotation connected to the figure with hand-drawn arrows. Information-rich but visually exciting."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -624,7 +636,7 @@ CRAFT PAPER: visible grain, worn edges, coffee stains, dark amber-brown — like
                     ]
                 }],
                 "max_tokens": 4096,
-                "size": "1024x1536",
+                "size": "1024x1792",
             },
             timeout=aiohttp.ClientTimeout(total=240),
         ) as resp:
