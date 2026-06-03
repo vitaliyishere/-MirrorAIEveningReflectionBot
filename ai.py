@@ -561,62 +561,56 @@ async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> 
     insight = day_data.get("insight") or "Каждый день — данные для следующего"
     date_str = day_data.get("date_str") or "Сегодня"
 
-    prompt = f"""Create a personal daily reflection character sheet poster — grotesque humorous caricature style on aged kraft paper.
+    prompt = f"""Turn the person from the reference photo into a grotesque humorous caricature for a personal daily reflection poster.
 
-=== CENTRAL FIGURE ===
-Draw the person from the reference photo as a full-body caricature: big expressive head, lanky body, oversized hands, dynamic pose (holding laptop or phone, mid-action). Keep face recognizable — same beard, glasses, hairstyle. Confident and slightly chaotic energy. Full body head-to-feet, NEVER cropped.
+CARICATURE STYLE: strongly exaggerated anatomy — big expressive head (40% of body height), elongated lanky body, oversized hands, spindly legs. Keep face 100% recognizable: same beard, glasses, hairstyle — just exaggerated for comic effect. Full body from head to feet — NEVER crop the figure. Dynamic pose: holding laptop or gesturing mid-thought.
 
-=== PAGE FORMAT ===
-Tall vertical 9:16 format (Instagram Stories, 1080×1920). Three zones top-to-bottom:
-1. TOP HEADER BAND — dark strip with title text
-2. MIDDLE ZONE — full-body caricature in center + 4 annotation boxes around it
-3. BOTTOM FOOTER BAND — dark strip with Mirror AI info
+CRITICAL — FULL BODY: The complete figure must be visible head-to-feet. Legs must reach the bottom of the middle zone. Do NOT cut off at waist or knees.
 
-=== ZONE 1 — TOP HEADER (dark amber band) ===
-Large bold handwritten text: «РЕФЛЕКСИЯ ДНЯ»
-Below it smaller: «ВИТАЛИК» with tiny hand-drawn crown ♛
+LAYOUT: Tall vertical poster, 9:16 Instagram Stories format. Three zones:
 
-=== ZONE 2 — MIDDLE (aged kraft paper background) ===
+━━━ ZONE 1 — TOP HEADER BAND (dark warm amber strip) ━━━
+Large bold handwritten: «РЕФЛЕКСИЯ ДНЯ»
+Smaller below: «ВИТАЛИК» with tiny crown ♛
 
-TOP-LEFT BOX (burgundy red border + header «СЕГОДНЯ:»):
-Short punchy bullet lines — max 5-6 words each, NO long sentences:
+━━━ ZONE 2 — MIDDLE (the big zone, kraft paper background) ━━━
+
+Full-body caricature stands in the CENTER of this zone.
+
+TOP-LEFT — box with BURGUNDY RED border, header «СЕГОДНЯ:»
+Bullet lines — each line is EXACTLY 3-4 words, telegraphic style:
 {activities_str}
 
-TOP-RIGHT BOX (cobalt blue border + header «ВРЕМЯ ДНЯ:»):
-Hand-drawn horizontal bar chart, each bar labeled:
+TOP-RIGHT — box with COBALT BLUE border, header «ВРЕМЯ ДНЯ:»
+Rough hand-drawn horizontal bar chart:
 {toggl_str or toggl_fallback}
 
-CARICATURE CENTER — full body figure with these arrow annotations:
-→ «промпт-инженер» pointing to head
-→ «борода на связи» pointing to beard
-→ «руки-загребалки» pointing to hands
-→ «ноги к дедлайну» pointing to legs
+SPEECH BUBBLE from the caricature's mouth — mandatory, visible:
+«{quote}»
 
-SPEECH BUBBLE from mouth: «{quote}»
-
-BOTTOM-LEFT BOX (green border + header «МУЗЫКА ДНЯ:» + small vinyl record drawing):
-Each track on its own short line:
+BOTTOM-LEFT — box with FOREST GREEN border, header «МУЗЫКА ДНЯ:» + tiny vinyl record doodle:
 {music_str or music_fallback}
 
-BOTTOM-RIGHT BOX (purple border + header «ИНСАЙТ:»):
+BOTTOM-RIGHT — box with DEEP PURPLE border, header «ИНСАЙТ:»
 {insight}
 
-=== ZONE 3 — BOTTOM FOOTER (dark amber band) ===
-Left side: mirror emoji 🪞 then «Mirror AI» in bold
-Center: «{date_str}»
-Right side: small text «Рефлексия дня»
+Funny hand-drawn arrows from figure to boxes and annotations:
+→ «промпт-инженер» → голова
+→ «борода на связи» → борода
+→ «руки-загребалки» → руки
+→ «ноги к дедлайну» → ноги
 
-=== TEXT STYLE ===
-All text in Russian Cyrillic. Handwritten/hand-lettered style — bold, clear, slightly imperfect. Like the style in Адель/Виталик character sheets: short punchy labels, NOT long paragraphs. Every word readable at a glance. Headers bold and colored, body text smaller but crisp.
+━━━ ZONE 3 — BOTTOM FOOTER BAND (same dark amber as header) ━━━
+🪞 Mirror AI  ·  {date_str}  ·  Рефлексия дня
 
-=== COLORS ===
-- Background: warm cream-beige parchment paper — light aged yellowy-ivory tone, like old book pages or vintage newspaper. NOT dark, NOT brown. The exact tone from classic character sheet illustrations: pale warm tan #E8D5A3 range, subtle paper grain and faint coffee ring stains
-- Headers: each box has its own color (burgundy red, cobalt blue, forest green, deep purple)
-- Caricature: warm watercolor washes, amber and rust tones on the cream paper
-- Footer/header bands: slightly deeper warm beige, same parchment family
+COLORS:
+- Paper background: warm cream-beige parchment — pale aged yellowy-ivory #E8D5A3, like old book pages. Visible paper grain, subtle coffee ring stains. NOT orange, NOT dark brown — LIGHT CREAM.
+- Header/footer bands: slightly deeper warm parchment, same cream family
+- Box borders: burgundy red / cobalt blue / forest green / deep purple (one per box)
+- Caricature: warm watercolor washes — amber skin tones, rust hoodie, dark jeans
+- All text: hand-lettered bold Russian Cyrillic, slightly imperfect
 
-=== STYLE ===
-Messy expressive ink lines + selective watercolor fills. Vintage illustrated zine energy. Every annotation connected to the figure with hand-drawn arrows. Information-rich but visually exciting."""
+STYLE: Messy expressive ink lines + selective bold watercolor fills. Vintage illustrated zine / sketchbook energy. Rich and tactile — like a hand-painted poster, NOT a clean digital illustration."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(

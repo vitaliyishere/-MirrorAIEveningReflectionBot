@@ -300,6 +300,30 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         )
 
 
+async def _translate_toggl_names(entries: list[tuple]) -> list[tuple]:
+    """Переводит английские названия Toggl-проектов в короткие русские (макс 2-3 слова)."""
+    if not entries:
+        return entries
+    names = [n for n, _ in entries]
+    try:
+        from ai import groq_generate
+        names_str = "\n".join(f"- {n}" for n in names)
+        prompt = (
+            "Переведи эти названия проектов на русский язык, очень коротко (1-3 слова).\n"
+            "Формат ответа — только список переводов в том же порядке, одно название на строку.\n"
+            "Примеры: 'Mirror AI' → 'Mirror AI', 'Eating' → 'Еда', 'Practice Yoga' → 'Йога', "
+            "'AI & Vibe coding' → 'AI-разработка', 'Work meetings' → 'Встречи'\n\n"
+            + names_str
+        )
+        result = await groq_generate(prompt, system="Переводчик проектов.", max_tokens=100)
+        translated = [l.strip().lstrip("-•123456789. ").strip() for l in result.strip().split("\n") if l.strip()]
+        if len(translated) == len(entries):
+            return [(translated[i], h) for i, (_, h) in enumerate(entries)]
+    except Exception:
+        pass
+    return entries
+
+
 async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music=None, toggl_entries=None, toggl_projects=None) -> dict:
     """Собирает данные дня для коллажа. Все аргументы опциональны — если не переданы, подтягивает сам."""
     import datetime as dt
@@ -327,9 +351,16 @@ async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music
             joined = "\n---\n".join(raw_transcripts)
             prompt = (
                 "Вот сырые голосовые заметки за день (могут быть с ошибками транскрипции). "
-                "Преобразуй их в список из 4-6 коротких читаемых пунктов — что человек делал сегодня. "
-                "Каждый пункт: 3-7 слов, без ошибок, без лишних слов. "
-                "Только список, без вступлений. Формат: одна строка = один пункт.\n\n"
+                "Преобразуй их в список из 4-6 УЛЬТРАКОРОТКИХ пунктов — что человек делал сегодня.\n"
+                "СТРОГОЕ ПРАВИЛО: каждый пункт — МАКСИМУМ 4 слова. Не 5, не 6 — только 4.\n"
+                "Глагол + объект. Примеры правильных пунктов:\n"
+                "• Запустил коллаж в боте\n"
+                "• Медитировал утром\n"
+                "• Работал над Mirror AI\n"
+                "• Созвон с командой\n"
+                "• Читал про стратегию\n"
+                "НЕ ПИШИ предложения, НЕ ПИШИ запятые с продолжением. Только: Глагол + что.\n"
+                "Только список, без вступлений.\n\n"
                 + joined
             )
             result = await groq_generate(prompt, system="Ты помощник по обработке голосовых заметок.", max_tokens=200)
@@ -368,8 +399,8 @@ async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music
                 dur = entry.get("duration", 0)
                 if dur > 0:
                     project_hours[pname] = project_hours.get(pname, 0) + dur
-            for pname, secs in sorted(project_hours.items(), key=lambda x: -x[1])[:4]:
-                toggl.append((pname, round(secs / 3600)))
+            top = sorted(project_hours.items(), key=lambda x: -x[1])[:4]
+            toggl = await _translate_toggl_names([(n, round(s/3600)) for n, s in top])
         except Exception:
             pass
     elif TOGGL_API_TOKEN:
@@ -383,8 +414,8 @@ async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music
                 dur = entry.get("duration", 0)
                 if dur > 0:
                     project_hours[pname] = project_hours.get(pname, 0) + dur
-            for pname, secs in sorted(project_hours.items(), key=lambda x: -x[1])[:4]:
-                toggl.append((pname, round(secs / 3600)))
+            top = sorted(project_hours.items(), key=lambda x: -x[1])[:4]
+            toggl = await _translate_toggl_names([(n, round(s/3600)) for n, s in top])
         except Exception:
             pass
 
