@@ -249,15 +249,37 @@ async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music
     if all_music is None:
         all_music = await get_today_music(user_id)
 
-    # Активности — короткие выжимки из рефлексий
+    # Активности — AI-выжимка из сырых транскриптов в чистые короткие строки
+    raw_transcripts = [
+        (r.get("transcript") or "").strip()
+        for r in (reflections or [])[:10]
+        if (r.get("transcript") or "").strip()
+    ]
     activities = []
-    for r in (reflections or [])[:6]:
-        text = (r.get("transcript") or "").strip()
-        if text:
-            # Берём первое предложение или первые 60 символов
-            short = text.split(".")[0].split("!")[0].split("?")[0][:70].strip()
-            if short:
-                activities.append(short)
+    if raw_transcripts:
+        try:
+            from ai import groq_generate
+            joined = "\n---\n".join(raw_transcripts)
+            prompt = (
+                "Вот сырые голосовые заметки за день (могут быть с ошибками транскрипции). "
+                "Преобразуй их в список из 4-6 коротких читаемых пунктов — что человек делал сегодня. "
+                "Каждый пункт: 3-7 слов, без ошибок, без лишних слов. "
+                "Только список, без вступлений. Формат: одна строка = один пункт.\n\n"
+                + joined
+            )
+            result = await groq_generate(prompt, system="Ты помощник по обработке голосовых заметок.", max_tokens=200)
+            for line in result.strip().split("\n"):
+                line = line.strip().lstrip("•-–—123456789. ").strip()
+                if line and len(line) > 3:
+                    activities.append(line)
+            activities = activities[:6]
+        except Exception as e:
+            logger.warning(f"Activities AI cleanup failed: {e}")
+            # Fallback: берём первые слова сырого транскрипта
+            for text in raw_transcripts[:5]:
+                short = text.split(".")[0][:60].strip()
+                if short:
+                    activities.append(short)
 
     # Музыка
     music = []

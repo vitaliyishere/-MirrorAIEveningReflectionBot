@@ -565,13 +565,15 @@ async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> 
 
 CARICATURE STYLE: strongly exaggerated anatomy (big expressive head, elongated lanky body, oversized hands, spindly legs), dramatic personality, messy energetic ink lines, sketchbook feel. Keep the face recognizable — same beard, glasses, hairstyle, but exaggerated for comic effect. Confident energetic pose, looking busy and heroic.
 
+CRITICAL — FULL BODY: The caricature MUST show the complete figure from head to feet. Full body visible, not cropped. Legs and feet fully drawn. Figure takes up the CENTER vertical strip of the image from top annotation area down to bottom strip.
+
 COLORS — vibrant and rich:
 - Deep amber-brown kraft paper texture as background (NOT pale yellow — dark, tactile, aged)
 - Multiple saturated colors: burgundy red for headers, forest green for bullet lists, cobalt blue for bar chart, warm amber for skin/watercolor fills, purple for music section
 - Bold watercolor washes, punchy and saturated
 - Overall: like a hand-painted vintage zine, rich texture with coffee ring stains and worn edges
 
-LAYOUT: Tall vertical portrait 2:3 format (iPhone screen ratio). Caricature figure center-tall.
+LAYOUT: Tall vertical portrait 2:3 format (iPhone screen ratio). Full-body caricature figure in the CENTER column. Annotation boxes on LEFT and RIGHT sides. Nothing cropped.
 
 ANNOTATIONS — handwritten Russian, slightly messy and personal:
 
