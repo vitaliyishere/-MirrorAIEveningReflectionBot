@@ -567,9 +567,10 @@ CARICATURE STYLE: strongly exaggerated anatomy — big expressive head (40% of b
 
 CRITICAL — FULL BODY: The complete figure must be visible head-to-feet. Legs must reach the bottom of the middle zone. Do NOT cut off at waist or knees.
 
-LAYOUT: Tall vertical poster, 9:16 Instagram Stories format. Three zones:
+LAYOUT: Tall vertical poster — 9:16 ratio, much taller than wide (like a phone screen held vertically). ALL three zones must be visible, nothing cut off at top or bottom. The header and footer bands are MANDATORY parts of the composition:
 
-━━━ ZONE 1 — TOP HEADER BAND (dark warm amber strip) ━━━
+━━━ ZONE 1 — TOP HEADER BAND (dark warm amber strip, ~12% of total height) ━━━
+MANDATORY — must appear at very top of image, full width.
 Large bold handwritten: «РЕФЛЕКСИЯ ДНЯ»
 Smaller below: «ВИТАЛИК» with tiny crown ♛
 
@@ -600,7 +601,8 @@ Funny hand-drawn arrows from figure to boxes and annotations:
 → «руки-загребалки» → руки
 → «ноги к дедлайну» → ноги
 
-━━━ ZONE 3 — BOTTOM FOOTER BAND (same dark amber as header) ━━━
+━━━ ZONE 3 — BOTTOM FOOTER BAND (same dark amber as header, ~8% of total height) ━━━
+MANDATORY — must appear at very bottom of image, full width.
 🪞 Mirror AI  ·  {date_str}  ·  Рефлексия дня
 
 COLORS:

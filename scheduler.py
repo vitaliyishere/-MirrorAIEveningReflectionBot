@@ -309,10 +309,17 @@ async def _translate_toggl_names(entries: list[tuple]) -> list[tuple]:
         from ai import groq_generate
         names_str = "\n".join(f"- {n}" for n in names)
         prompt = (
-            "Переведи эти названия проектов на русский язык, очень коротко (1-3 слова).\n"
-            "Формат ответа — только список переводов в том же порядке, одно название на строку.\n"
-            "Примеры: 'Mirror AI' → 'Mirror AI', 'Eating' → 'Еда', 'Practice Yoga' → 'Йога', "
-            "'AI & Vibe coding' → 'AI-разработка', 'Work meetings' → 'Встречи'\n\n"
+            "Переведи эти названия Toggl-проектов на короткий русский (1-3 слова). "
+            "Если название уже понятное (Mirror AI, YouTube, Netflix) — оставь как есть или транслитерируй.\n"
+            "Формат: только список переводов в том же порядке, одно на строку. Без нумерации.\n"
+            "Примеры правильных переводов:\n"
+            "Mirror AI → Mirror AI\n"
+            "Eating → Еда\n"
+            "Practice Yoga / Chigong → Йога/Цигун\n"
+            "AI & Vibe coding → AI-разработка\n"
+            "Work meetings → Встречи\n"
+            "Sleep → Сон\n"
+            "Reading → Чтение\n\n"
             + names_str
         )
         result = await groq_generate(prompt, system="Переводчик проектов.", max_tokens=100)
