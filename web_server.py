@@ -170,6 +170,23 @@ async def handle_music_preview(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
+async def handle_send_summary(request: web.Request) -> web.Response:
+    """Запускает генерацию и отправку резюме (daily) в личку + канал.
+    POST /admin/send-summary  с заголовком X-Secret."""
+    secret = request.headers.get("X-Secret", "")
+    if secret != API_SECRET:
+        return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+    try:
+        from scheduler import send_daily_summary
+        bot = request.app["bot"]
+        import asyncio
+        asyncio.create_task(send_daily_summary(bot, reply_to=None))
+        return web.json_response({"ok": True, "message": "Summary generation started"})
+    except Exception as e:
+        logger.error(f"Send summary error: {e}", exc_info=True)
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
 async def handle_delete_summary(request: web.Request) -> web.Response:
     """Удаляет последнее резюме (daily или weekly) из чата и канала."""
     secret = request.headers.get("X-Secret", "")
@@ -253,6 +270,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/health", handle_health)
     app.router.add_post("/admin/queue", handle_run_queue)
     app.router.add_post("/admin/cleanup", handle_cleanup_db)
+    app.router.add_post("/admin/send-summary", handle_send_summary)
     app.router.add_post("/admin/delete-summary/{type}", handle_delete_summary)
     app.router.add_get("/spotify/auth", handle_spotify_auth)
     app.router.add_get("/spotify/callback", handle_spotify_callback)
