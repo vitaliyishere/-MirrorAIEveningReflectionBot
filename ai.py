@@ -638,54 +638,49 @@ async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> 
     insight = day_data.get("insight") or "Каждый день — данные для следующего"
     date_str = day_data.get("date_str") or "Сегодня"
 
-    prompt = f"""Create a personal daily journal page illustration — hand-drawn sketchbook style, like an artist's personal diary.
+    prompt = f"""Create a PERSONAL CHARACTER SHEET — an illustrated character profile card in the style of a concept art / RPG character page about someone's day.
 
-DRAWING STYLE:
-Pencil sketch base with selective ink lines and light watercolor/colored pencil fills. Loose, slightly messy, personal energy — NOT a clean digital poster, NOT a graphic design template. Think: someone drew this in their sketchbook late at night. Organic, imperfect, warm.
+ART STYLE: High-quality mixed-media illustration. Detailed character art in the center with expressive ink linework and rich watercolor fills. Around the central figure: smaller sketched vignette scenes. Hand-lettered Russian text with personality. Think: a skilled artist's personal zine page about a specific person — like a visual biography of one day. NOT a poster, NOT a template — a genuine illustrated character profile.
 
-CENTRAL FIGURE — full body, must be visible from head to feet:
-Draw the person from the reference photo. Exaggerated caricature proportions: oversized head (45% of body), VERY elongated thin body, spindly legs, big expressive hands. Same beard, glasses, hairstyle — recognizable but exaggerated. Dynamic relaxed pose: holding phone or laptop, slight lean, casual energy. Hoodie, jeans.
+PAPER: Aged parchment — warm yellowy-ivory texture, slightly worn edges, subtle coffee stains. The illustration lives ON this paper, not over it.
 
-PAPER BACKGROUND:
-Aged yellowed parchment — warm yellowy-ivory, like old journal paper. NOT orange, NOT dark. Visible paper texture, subtle stains, slight worn edges.
+═══ CENTRAL FIGURE (large, dominant) ═══
+Draw the person from the reference photo as a compelling full-body character illustration — slightly caricatured but charming, not grotesque. Big expressive beard, round glasses, dark hair, confident energy. Wearing hoodie and jeans. Dynamic relaxed pose — maybe leaning on something or gesturing. This should feel like a HERO PORTRAIT, taking up ~35% of the image width.
 
-LAYOUT — organic, NOT a rigid grid. Scatter elements loosely around the figure:
-
-LEFT SIDE — activities list (no box border needed, or simple pencil underline):
-Header: «СЕГОДНЯ:» (handwritten, underlined)
+═══ MINI SCENES (4-5 small vignettes scattered around, each ~15% of image) ═══
+Draw 4-5 small detailed scenes showing this person doing things from today:
 {activities_str}
+Each vignette: small detailed sketch of the person actually doing the activity. Like thumbnail illustrations in a comic.
 
-TOP RIGHT — time block (rough sketched rectangle):
-Header: «ВРЕМЯ ДНЯ:»
-Rough vertical bar chart (hand-drawn bars, colored pencil fills):
-{toggl_str or toggl_fallback}
+═══ TEXT SECTIONS (handwritten, scattered naturally around figure) ═══
 
-SPEECH BUBBLE from figure's mouth (organic blob shape, NOT geometric):
+TOP — large stylized title: «ВИТАЛИК» with small crown ♛ and subtitle «день {date_str}»
+
+SPEECH BUBBLE (large, expressive, coming from figure):
 «{quote}»
 
-BOTTOM LEFT — music (rough sketched area, tiny vinyl record doodle nearby):
-Header: «МУЗЫКА:»
+ВРЕМЯ ДНЯ section (with rough hand-drawn bar chart):
+{toggl_str or toggl_fallback}
+
+МУЗЫКА section (with small vinyl record doodle):
 {music_str or music_fallback}
 
-BOTTOM RIGHT — insight (rough sketched rectangle):
-Header: «ИНСАЙТ:»
+ИНСАЙТ section (in a rough box or speech bubble):
 {insight}
 
-SCATTERED ANNOTATIONS — handwritten labels with sketchy arrows pointing to body parts:
+FUNNY ANNOTATIONS with arrows pointing to body parts:
 → «промпт-инженер» → голова
-→ «борода на связи» → борода
+→ «борода мудрости» → борода
 → «руки-загребалки» → руки
-→ «ноги к дедлайну» → ноги
+→ «дедлайн-машина» → ноги
 
-MINI VIGNETTES — 3-4 tiny sketch drawings scattered in empty corners (2-3cm size each):
-- tiny meditating figure
-- small laptop with glowing screen
-- coffee cup with steam
-- small AI/robot head doodle
-
-TEXT: All Russian Cyrillic. Mixed handwritten styles — some bold, some regular. Slightly imperfect, like real handwriting. NOT uniform digital fonts.
-
-COLORS: Muted, warm palette. Aged paper base. Colored pencil/watercolor accents: rust orange for figure, muted blue/green/burgundy for info blocks. Nothing too bright or saturated — this is a personal journal, not a poster."""
+═══ STYLE NOTES ═══
+- Mix of detailed realistic character + loose sketchy vignettes = the charm
+- Handwritten Russian text: bold headers, slightly messy body text, personality annotations
+- Colors: warm amber/rust for main figure, muted teal/burgundy/green accents, aged paper base
+- Arrows, small doodles, decorative elements scattered naturally
+- Dense but readable — like a page that rewards looking at for 2 minutes
+- NO rigid grid, NO clean boxes — organic layout like a skilled illustrator's sketchbook"""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -696,7 +691,7 @@ COLORS: Muted, warm palette. Aged paper base. Colored pencil/watercolor accents:
                 "X-Title": "Mirror AI Collage",
             },
             json={
-                "model": "openai/gpt-5-image-mini",
+                "model": "openai/gpt-5-image",
                 "messages": [{
                     "role": "user",
                     "content": [
