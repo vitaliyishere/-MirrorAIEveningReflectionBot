@@ -16,6 +16,38 @@ from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
 
+TG_MAX_LEN = 4000  # немного меньше 4096 для запаса
+
+
+def split_text(text: str, max_len: int = TG_MAX_LEN) -> list[str]:
+    """Разбивает длинный текст на части, разрезая по строкам (не внутри слов)."""
+    if len(text) <= max_len:
+        return [text]
+    parts = []
+    current = []
+    current_len = 0
+    for line in text.split("\n"):
+        line_len = len(line) + 1  # +1 за \n
+        if current_len + line_len > max_len and current:
+            parts.append("\n".join(current))
+            current = []
+            current_len = 0
+        current.append(line)
+        current_len += line_len
+    if current:
+        parts.append("\n".join(current))
+    return parts
+
+
+async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "Markdown") -> object:
+    """Отправляет сообщение, разбивая на части если длиннее 4000 символов.
+    Возвращает последнее отправленное сообщение."""
+    parts = split_text(text)
+    msg = None
+    for part in parts:
+        msg = await bot.send_message(chat_id=chat_id, text=part, parse_mode=parse_mode)
+    return msg
+
 
 async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = None):
     """for_date — строка YYYY-MM-DD в МСК (если None — сегодня)."""
@@ -191,12 +223,12 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
                 for n in notes
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"
-        daily_msg = await bot.send_message(chat_id=reply_chat, text=tg_text, parse_mode="Markdown")
+        daily_msg = await send_long_message(bot, reply_chat, tg_text)
         await set_setting("last_daily_msg_id", str(daily_msg.message_id))
         await set_setting("last_daily_chat_id", str(reply_chat))
         # Автоматический репорт по расписанию — дублируем в канал если запрос был из лички
         if not reply_to and CHANNEL_ID:
-            ch_msg = await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
+            ch_msg = await send_long_message(bot, CHANNEL_ID, tg_text)
             await set_setting("last_daily_channel_msg_id", str(ch_msg.message_id))
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
         logger.info(f"Daily summary sent to {reply_chat}")
@@ -462,11 +494,11 @@ async def send_weekly_summary(bot: Bot):
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)
         tg_text = f"🗓 *Резюме недели — {today}*\n\n{fmt(summary)}"
-        weekly_msg = await bot.send_message(chat_id=user_id, text=tg_text, parse_mode="Markdown")
+        weekly_msg = await send_long_message(bot, user_id, tg_text)
         await set_setting("last_weekly_msg_id", str(weekly_msg.message_id))
         await set_setting("last_weekly_chat_id", str(user_id))
         if CHANNEL_ID:
-            ch_msg = await bot.send_message(chat_id=CHANNEL_ID, text=tg_text, parse_mode="Markdown")
+            ch_msg = await send_long_message(bot, CHANNEL_ID, tg_text)
             await set_setting("last_weekly_channel_msg_id", str(ch_msg.message_id))
         await save_to_notion(summary, "weekly")
         logger.info(f"Weekly summary sent to {user_id}")
