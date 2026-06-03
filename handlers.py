@@ -34,7 +34,15 @@ async def _queue_voice(update: Update, context, chat_id: int, user_id: int, voic
         audio_path = os.path.join(AUDIO_TEMP_DIR, f"{voice.file_id}.ogg")
         await file.download_to_drive(audio_path)
         logger.info(f"Audio queued from chat {chat_id}: {audio_path}")
-        await save_reflection(user_id, audio_path=audio_path, audio_file_id=voice.file_id, chat_id=chat_id)
+        # Привязываем к ожидающему фото если есть
+        from database import get_pending_image, delete_pending_image
+        pending_img = await get_pending_image(user_id)
+        image_file_id = None
+        if pending_img:
+            image_file_id = pending_img["file_id"]
+            await delete_pending_image(user_id)
+            logger.info(f"Voice linked to pending photo: {image_file_id}")
+        await save_reflection(user_id, audio_path=audio_path, audio_file_id=voice.file_id, chat_id=chat_id, image_file_id=image_file_id)
         await context.bot.set_message_reaction(
             chat_id=chat_id,
             message_id=message_id,
@@ -62,11 +70,89 @@ async def handle_channel_voice(update: Update, context: ContextTypes.DEFAULT_TYP
     await _queue_voice(update, context, post.chat.id, ALLOWED_USER_ID, post.voice, post.message_id)
 
 
+async def _save_pending_photo(context, chat_id: int, user_id: int, photo_sizes, message_id: int):
+    """Сохраняет фото в pending_images и ставит реакцию 👀."""
+    try:
+        from database import save_pending_image
+        # Берём файл лучшего качества (последний в массиве PhotoSize)
+        file_id = photo_sizes[-1].file_id
+        await save_pending_image(user_id, file_id, chat_id, message_id)
+        await context.bot.set_message_reaction(
+            chat_id=chat_id,
+            message_id=message_id,
+            reaction=[ReactionTypeEmoji("👀")]
+        )
+        logger.info(f"Pending photo saved from chat {chat_id}: {file_id}")
+    except Exception as e:
+        logger.error(f"Error saving pending photo: {e}", exc_info=True)
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        return
+    msg = update.message
+    if not msg or not msg.photo:
+        return
+    file_id = msg.photo[-1].file_id
+    # Если пришла подпись (caption) вместе с фото — сразу обрабатываем через Vision
+    if msg.caption and msg.caption.strip():
+        await _handle_photo_with_comment(context, msg.chat.id, update.effective_user.id, file_id, msg.caption.strip(), msg.message_id)
+    else:
+        await _save_pending_photo(context, msg.chat.id, update.effective_user.id, msg.photo, msg.message_id)
+
+
+async def handle_channel_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    post = update.channel_post
+    if not post or not post.photo:
+        return
+    file_id = post.photo[-1].file_id
+    if post.caption and post.caption.strip():
+        await _handle_photo_with_comment(context, post.chat.id, ALLOWED_USER_ID, file_id, post.caption.strip(), post.message_id)
+    else:
+        await _save_pending_photo(context, post.chat.id, ALLOWED_USER_ID, post.photo, post.message_id)
+
+
+async def _handle_photo_with_comment(context, chat_id: int, user_id: int, file_id: str, comment: str, message_id: int):
+    """Немедленно обрабатывает фото (по file_id) с комментарием через Vision API."""
+    try:
+        from database import save_reflection, delete_pending_image
+        from ai import describe_image_with_comment
+        tg_file = await context.bot.get_file(file_id)
+        photo_bytes = bytes(await tg_file.download_as_bytearray())
+        image_desc = await describe_image_with_comment(photo_bytes, comment)
+        combined = f"[Фото: {image_desc}]\n{comment}"
+        await save_reflection(user_id, combined, chat_id=chat_id)
+        await delete_pending_image(user_id)  # на случай если было старое pending
+        await context.bot.set_message_reaction(
+            chat_id=chat_id,
+            message_id=message_id,
+            reaction=[ReactionTypeEmoji("🖼")]
+        )
+        logger.info(f"Photo+comment saved via Vision for user {user_id}: {combined[:60]}...")
+    except Exception as e:
+        logger.error(f"Photo+comment Vision error: {e}", exc_info=True)
+        # Фолбэк — сохраняем только текст комментария
+        from database import save_reflection
+        await save_reflection(user_id, comment, chat_id=chat_id)
+        await context.bot.set_message_reaction(
+            chat_id=chat_id,
+            message_id=message_id,
+            reaction=[ReactionTypeEmoji("👌")]
+        )
+
+
 async def handle_channel_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     post = update.channel_post
     if not post or not post.text:
         return
     text = post.text
+
+    # Если есть ожидающее фото — текст является комментарием к нему
+    from database import get_pending_image
+    pending_img = await get_pending_image(ALLOWED_USER_ID)
+    if pending_img:
+        await _handle_photo_with_comment(context, post.chat.id, ALLOWED_USER_ID, pending_img["file_id"], text, post.message_id)
+        return
 
     # Внешняя заметка проверяется ПЕРВОЙ — длинный структурированный текст
     # не должен попадать в музыку даже если содержит слова "трек", "музыка" и т.п.
@@ -217,6 +303,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reaction=[ReactionTypeEmoji("🔥")]
         )
         logger.info(f"Saved music: {track_info['track']} — {track_info.get('artist', '')}")
+        return
+
+    # Если есть ожидающее фото — текст является комментарием к нему
+    from database import get_pending_image
+    pending_img = await get_pending_image(user_id)
+    if pending_img:
+        await _handle_photo_with_comment(context, update.effective_chat.id, user_id, pending_img["file_id"], text, update.message.message_id)
         return
 
     await save_reflection(user_id, text)

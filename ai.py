@@ -482,5 +482,56 @@ async def generate_weekly_summary_from_daily(daily_summaries: list[dict]) -> str
     return response.choices[0].message.content
 
 
+async def describe_image_with_comment(image_bytes: bytes, comment: str) -> str:
+    """GPT-4o Vision: описывает фото с учётом комментария → запись для рефлексии.
+
+    Возвращает 1-2 предложения от первого лица — что на фото и как связано с комментарием.
+    """
+    import base64
+    import aiohttp
+
+    b64 = base64.b64encode(image_bytes).decode()
+    system = (
+        "Ты помощник для личной рефлексии. Человек прислал картинку с комментарием. "
+        "Напиши одну короткую запись от первого лица (мужской род) — кратко что изображено "
+        "и как это связано с комментарием. Максимум 2 предложения. "
+        "Никаких вступлений — сразу сама запись."
+    )
+    user_content = [
+        {
+            "type": "text",
+            "text": f"Мой комментарий к картинке: «{comment}»\nОпиши кратко что на картинке и как это вписывается в контекст моего комментария."
+        },
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
+        }
+    ]
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://mirror-ai.app",
+                "X-Title": "Mirror AI Reflection Bot",
+            },
+            json={
+                "model": OPENROUTER_SUMMARY_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content}
+                ],
+                "max_tokens": 200,
+                "temperature": 0.5,
+            },
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"Vision API error {resp.status}: {text[:200]}")
+            data = await resp.json()
+            return data["choices"][0]["message"]["content"].strip()
+
+
 def ensure_audio_dir():
     os.makedirs(AUDIO_TEMP_DIR, exist_ok=True)

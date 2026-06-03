@@ -7,7 +7,7 @@ from aiohttp import web
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID
 from database import init_db, reset_stuck_audio
-from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_text, handle_status, handle_today, handle_summary, handle_channel_summary, handle_weekly
+from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_channel_photo, handle_text, handle_photo, handle_status, handle_today, handle_summary, handle_channel_summary, handle_weekly
 from scheduler import setup_scheduler
 from web_server import create_app
 import events
@@ -105,6 +105,8 @@ def main():
         tg_app.add_handler(CommandHandler("summary", handle_summary, filters=filters.ChatType.PRIVATE))
         tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.PRIVATE, handle_voice))
         tg_app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.CHANNEL, handle_channel_voice))
+        tg_app.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, handle_photo))
+        tg_app.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.CHANNEL, handle_channel_photo))
         tg_app.add_handler(MessageHandler(filters.Regex(r'^/summary') & filters.ChatType.CHANNEL, handle_channel_summary))
         tg_app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_channel_text))
         tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

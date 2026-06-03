@@ -410,6 +410,20 @@ async def process_queue(bot: Bot):
     try:
         logger.info(f"Queue: transcribing {audio_path}")
         transcript = await transcribe_audio(audio_path)
+
+        # Vision-обогащение: если к голосовому привязано фото — описываем через GPT-4o
+        if r.get("image_file_id"):
+            try:
+                logger.info(f"Queue: vision enrichment for reflection {r['id']}")
+                tg_photo = await bot.get_file(r["image_file_id"])
+                photo_bytes = bytes(await tg_photo.download_as_bytearray())
+                from ai import describe_image_with_comment
+                image_desc = await describe_image_with_comment(photo_bytes, transcript)
+                transcript = f"[Фото: {image_desc}]\n{transcript}"
+                logger.info(f"Queue: vision enrichment done: {image_desc[:60]}...")
+            except Exception as e:
+                logger.warning(f"Queue: vision enrichment failed (text-only fallback): {e}")
+
         await update_transcript(r["id"], transcript)
 
         try:

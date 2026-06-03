@@ -78,6 +78,21 @@ async def init_db():
                 value TEXT NOT NULL
             )
         """)
+        # Миграция: image_file_id для привязки фото к рефлексии
+        try:
+            await db.execute("ALTER TABLE reflections ADD COLUMN image_file_id TEXT")
+        except Exception:
+            pass
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS pending_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                file_id TEXT NOT NULL,
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            )
+        """)
         await db.commit()
 
 
@@ -120,11 +135,11 @@ async def set_setting(key: str, value: str):
         await db.commit()
 
 
-async def save_reflection(user_id: int, transcript: str = '', audio_file_id: str = None, audio_path: str = None, chat_id: int = None) -> int:
+async def save_reflection(user_id: int, transcript: str = '', audio_file_id: str = None, audio_path: str = None, chat_id: int = None, image_file_id: str = None) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO reflections (user_id, audio_file_id, audio_path, transcript, chat_id) VALUES (?, ?, ?, ?, ?)",
-            (user_id, audio_file_id, audio_path, transcript, chat_id or user_id)
+            "INSERT INTO reflections (user_id, audio_file_id, audio_path, transcript, chat_id, image_file_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, audio_file_id, audio_path, transcript, chat_id or user_id, image_file_id)
         )
         await db.commit()
         return cursor.lastrowid
@@ -322,6 +337,38 @@ async def save_summary(user_id: int, summary_type: str, content: str, date: str)
             "INSERT INTO summaries (user_id, type, content, date) VALUES (?, ?, ?, ?)",
             (user_id, summary_type, content, date)
         )
+        await db.commit()
+
+
+async def save_pending_image(user_id: int, file_id: str, chat_id: int, message_id: int):
+    """Сохраняет ожидающее фото (заменяет предыдущее если было)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM pending_images WHERE user_id = ?", (user_id,))
+        await db.execute(
+            "INSERT INTO pending_images (user_id, file_id, chat_id, message_id) VALUES (?, ?, ?, ?)",
+            (user_id, file_id, chat_id, message_id)
+        )
+        await db.commit()
+
+
+async def get_pending_image(user_id: int, max_age_minutes: int = 5) -> dict | None:
+    """Возвращает незакомментированное фото если оно не старше N минут."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM pending_images WHERE user_id = ?
+               AND created_at >= datetime('now', 'localtime', ?)
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, f"-{max_age_minutes} minutes")
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def delete_pending_image(user_id: int):
+    """Удаляет ожидающее фото после привязки к рефлексии."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM pending_images WHERE user_id = ?", (user_id,))
         await db.commit()
 
 
