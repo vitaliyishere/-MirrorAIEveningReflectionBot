@@ -561,58 +561,57 @@ async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> 
     insight = day_data.get("insight") or "Каждый день — данные для следующего"
     date_str = day_data.get("date_str") or "Сегодня"
 
-    prompt = f"""Turn the person from the reference photo into a grotesque humorous caricature for a personal daily reflection poster.
+    prompt = f"""Create a personal daily journal page illustration — hand-drawn sketchbook style, like an artist's personal diary.
 
-CARICATURE STYLE: strongly exaggerated anatomy — big expressive head (40% of body height), elongated lanky body, oversized hands, spindly legs. Keep face 100% recognizable: same beard, glasses, hairstyle — just exaggerated for comic effect. Full body from head to feet — NEVER crop the figure. Dynamic pose: holding laptop or gesturing mid-thought.
+DRAWING STYLE:
+Pencil sketch base with selective ink lines and light watercolor/colored pencil fills. Loose, slightly messy, personal energy — NOT a clean digital poster, NOT a graphic design template. Think: someone drew this in their sketchbook late at night. Organic, imperfect, warm.
 
-CRITICAL — FULL BODY: The complete figure must be visible head-to-feet. Legs must reach the bottom of the middle zone. Do NOT cut off at waist or knees.
+CENTRAL FIGURE — full body, must be visible from head to feet:
+Draw the person from the reference photo. Exaggerated caricature proportions: oversized head (45% of body), VERY elongated thin body, spindly legs, big expressive hands. Same beard, glasses, hairstyle — recognizable but exaggerated. Dynamic relaxed pose: holding phone or laptop, slight lean, casual energy. Hoodie, jeans.
 
-LAYOUT: Tall vertical poster — 9:16 ratio, much taller than wide (like a phone screen held vertically). ALL three zones must be visible, nothing cut off at top or bottom. The header and footer bands are MANDATORY parts of the composition:
+PAPER BACKGROUND:
+Aged yellowed parchment — warm yellowy-ivory, like old journal paper. NOT orange, NOT dark. Visible paper texture, subtle stains, slight worn edges.
 
-━━━ ZONE 1 — TOP HEADER BAND (dark warm amber strip, ~12% of total height) ━━━
-MANDATORY — must appear at very top of image, full width.
-Large bold handwritten: «РЕФЛЕКСИЯ ДНЯ»
-Smaller below: «ВИТАЛИК» with tiny crown ♛
+LAYOUT — organic, NOT a rigid grid. Scatter elements loosely around the figure:
 
-━━━ ZONE 2 — MIDDLE (the big zone, kraft paper background) ━━━
-
-Full-body caricature stands in the CENTER of this zone.
-
-TOP-LEFT — box with BURGUNDY RED border, header «СЕГОДНЯ:»
-Bullet lines — each line is EXACTLY 3-4 words, telegraphic style:
+LEFT SIDE — activities list (no box border needed, or simple pencil underline):
+Header: «СЕГОДНЯ:» (handwritten, underlined)
 {activities_str}
 
-TOP-RIGHT — box with COBALT BLUE border, header «ВРЕМЯ ДНЯ:»
-Rough hand-drawn horizontal bar chart:
+TOP RIGHT — time block (rough sketched rectangle):
+Header: «ВРЕМЯ ДНЯ:»
+Rough vertical bar chart (hand-drawn bars, colored pencil fills):
 {toggl_str or toggl_fallback}
 
-SPEECH BUBBLE from the caricature's mouth — mandatory, visible:
+SPEECH BUBBLE from figure's mouth (organic blob shape, NOT geometric):
 «{quote}»
 
-BOTTOM-LEFT — box with FOREST GREEN border, header «МУЗЫКА ДНЯ:» + tiny vinyl record doodle:
+BOTTOM LEFT — music (rough sketched area, tiny vinyl record doodle nearby):
+Header: «МУЗЫКА:»
 {music_str or music_fallback}
 
-BOTTOM-RIGHT — box with DEEP PURPLE border, header «ИНСАЙТ:»
+BOTTOM RIGHT — insight (rough sketched rectangle):
+Header: «ИНСАЙТ:»
 {insight}
 
-Funny hand-drawn arrows from figure to boxes and annotations:
+SCATTERED ANNOTATIONS — handwritten labels with sketchy arrows pointing to body parts:
 → «промпт-инженер» → голова
 → «борода на связи» → борода
 → «руки-загребалки» → руки
 → «ноги к дедлайну» → ноги
 
-━━━ ZONE 3 — BOTTOM FOOTER BAND (same dark amber as header, ~8% of total height) ━━━
-MANDATORY — must appear at very bottom of image, full width.
-🪞 Mirror AI  ·  {date_str}  ·  Рефлексия дня
+MINI VIGNETTES — 3-4 tiny sketch drawings scattered in empty corners (2-3cm size each):
+- tiny meditating figure
+- small laptop with glowing screen
+- coffee cup with steam
+- small AI/robot head doodle
 
-COLORS:
-- Paper background: warm cream-beige parchment — pale aged yellowy-ivory #E8D5A3, like old book pages. Visible paper grain, subtle coffee ring stains. NOT orange, NOT dark brown — LIGHT CREAM.
-- Header/footer bands: slightly deeper warm parchment, same cream family
-- Box borders: burgundy red / cobalt blue / forest green / deep purple (one per box)
-- Caricature: warm watercolor washes — amber skin tones, rust hoodie, dark jeans
-- All text: hand-lettered bold Russian Cyrillic, slightly imperfect
+TOP AREA: handwritten title «РЕФЛЕКСИЯ ДНЯ» + «ВИТАЛИК» with small crown doodle ♛
+BOTTOM AREA: small text «🪞 Mirror AI · {date_str}»
 
-STYLE: Messy expressive ink lines + selective bold watercolor fills. Vintage illustrated zine / sketchbook energy. Rich and tactile — like a hand-painted poster, NOT a clean digital illustration."""
+TEXT: All Russian Cyrillic. Mixed handwritten styles — some bold, some regular. Slightly imperfect, like real handwriting. NOT uniform digital fonts.
+
+COLORS: Muted, warm palette. Aged paper base. Colored pencil/watercolor accents: rust orange for figure, muted blue/green/burgundy for info blocks. Nothing too bright or saturated — this is a personal journal, not a poster."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
