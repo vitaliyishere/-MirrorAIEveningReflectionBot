@@ -640,45 +640,64 @@ CRAFT PAPER: visible grain, worn edges, coffee stains, dark amber-brown — like
     return base64.b64decode(b64_result)
 
 
-async def select_best_profile_photo(photos_bytes: list[bytes]) -> int:
-    """GPT-4o Vision: выбирает лучшее фото профиля (с чётким лицом).
-    Возвращает индекс лучшего фото."""
+async def validate_profile_photos(photos: list[dict]) -> list[dict]:
+    """Vision проверяет каждое фото профиля: есть ли лицо, подходит ли для карикатуры.
+
+    photos: [{"file_id": str, "bytes": bytes}, ...]
+    Возвращает только валидные фото (с лицом, тот же человек, хорошее качество).
+    """
     import base64
     import aiohttp
+    import json as _json
 
-    if len(photos_bytes) == 1:
-        return 0
+    if not photos:
+        return []
 
-    content: list = [{"type": "text", "text":
-        "Перед тобой фотографии профиля одного человека. "
-        "Выбери номер фотографии (начиная с 0), где лицо видно наиболее чётко — анфас или близко к нему, "
-        "хорошее освещение, без фильтров. "
-        "Ответь ТОЛЬКО цифрой — номер лучшей фотографии."}]
-    for photo_b in photos_bytes[:6]:
-        b64 = base64.b64encode(photo_b).decode()
-        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+    valid = []
+    for photo in photos:
+        b64 = base64.b64encode(photo["bytes"]).decode()
+        content = [
+            {"type": "text", "text":
+                "Посмотри на это фото профиля. Ответь JSON: "
+                "{\"has_face\": true/false, \"face_clear\": true/false, \"suitable\": true/false}. "
+                "has_face — видно ли лицо человека. "
+                "face_clear — лицо чёткое, анфас или 3/4, без сильных фильтров/масок. "
+                "suitable — подходит ли фото для создания карикатуры (есть лицо, видно черты). "
+                "Только JSON, без пояснений."},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+        ]
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "HTTP-Referer": "https://mirror-ai.app",
+                    },
+                    json={
+                        "model": OPENROUTER_SUMMARY_MODEL,
+                        "messages": [{"role": "user", "content": content}],
+                        "max_tokens": 60,
+                        "temperature": 0,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    data = await resp.json()
+                    raw = data["choices"][0]["message"]["content"].strip()
+                    # Вытаскиваем JSON из ответа
+                    start = raw.find("{")
+                    end = raw.rfind("}") + 1
+                    result = _json.loads(raw[start:end]) if start >= 0 else {}
+                    if result.get("suitable") or (result.get("has_face") and result.get("face_clear")):
+                        valid.append(photo)
+                        logger.debug(f"Photo {photo['file_id'][:12]}... → VALID {result}")
+                    else:
+                        logger.debug(f"Photo {photo['file_id'][:12]}... → SKIP {result}")
+        except Exception as e:
+            logger.warning(f"Photo validation error: {e} — accepting photo as fallback")
+            valid.append(photo)  # при ошибке принимаем
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://mirror-ai.app",
-            },
-            json={
-                "model": OPENROUTER_SUMMARY_MODEL,
-                "messages": [{"role": "user", "content": content}],
-                "max_tokens": 10,
-            },
-            timeout=aiohttp.ClientTimeout(total=30),
-        ) as resp:
-            data = await resp.json()
-            text = data["choices"][0]["message"]["content"].strip()
-            try:
-                idx = int(text[0])
-                return min(idx, len(photos_bytes) - 1)
-            except Exception:
-                return 0
+    return valid
 
 
 def ensure_audio_dir():

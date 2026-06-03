@@ -394,57 +394,140 @@ async def handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ---------------------------------------------------------------------------
-# /setphoto — обновить аватарку для коллажа
+# /setphoto — валидировать и закешировать все подходящие аватарки
 # ---------------------------------------------------------------------------
 
-PROFILE_PHOTO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "profile_photo.jpg")
-# На Railway: /data/profile_photo.jpg
-if os.path.exists("/data"):
-    PROFILE_PHOTO_PATH = "/data/profile_photo.jpg"
+PHOTOS_DIR = "/data/profile_photos" if os.path.exists("/data") else os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "profile_photos"
+)
+PHOTOS_INDEX_PATH = os.path.join(PHOTOS_DIR, "index.json")
 
 
-async def _fetch_and_save_profile_photo(bot, user_id: int) -> bytes | None:
-    """Скачивает фото профиля из Telegram, выбирает лучшее через Vision, сохраняет."""
-    from ai import select_best_profile_photo
-    photos = await bot.get_user_profile_photos(user_id, limit=6)
-    if not photos.total_count:
-        return None
-    photos_bytes = []
-    for photo_set in photos.photos:
-        tg_file = await bot.get_file(photo_set[-1].file_id)  # наибольшее разрешение
-        photos_bytes.append(bytes(await tg_file.download_as_bytearray()))
-    best_idx = await select_best_profile_photo(photos_bytes)
-    best_photo = photos_bytes[best_idx]
-    os.makedirs(os.path.dirname(PROFILE_PHOTO_PATH) or ".", exist_ok=True)
-    with open(PROFILE_PHOTO_PATH, "wb") as f:
-        f.write(best_photo)
+async def refresh_profile_photos(bot, user_id: int) -> list[str]:
+    """Скачивает все аватарки из Telegram, проверяет Vision, кеширует валидные.
+
+    Возвращает список file_id валидных фото.
+    """
+    import json as _json
     import datetime
-    # Сохраняем дату обновления
-    with open(PROFILE_PHOTO_PATH + ".updated", "w") as f:
-        f.write(datetime.date.today().isoformat())
-    logger.info(f"Profile photo saved: {PROFILE_PHOTO_PATH} (idx={best_idx})")
-    return best_photo
+    from ai import validate_profile_photos
+
+    photos_tg = await bot.get_user_profile_photos(user_id, limit=10)
+    if not photos_tg.total_count:
+        return []
+
+    os.makedirs(PHOTOS_DIR, exist_ok=True)
+
+    # Скачиваем все фото
+    all_photos = []
+    for photo_set in photos_tg.photos:
+        file_id = photo_set[-1].file_id  # максимальное разрешение
+        path = os.path.join(PHOTOS_DIR, f"{file_id[:20]}.jpg")
+        if not os.path.exists(path):
+            tg_file = await bot.get_file(file_id)
+            data = bytes(await tg_file.download_as_bytearray())
+            with open(path, "wb") as f:
+                f.write(data)
+        else:
+            with open(path, "rb") as f:
+                data = f.read()
+        all_photos.append({"file_id": file_id, "path": path, "bytes": data})
+
+    # Vision валидирует: есть лицо, тот же человек, подходит для карикатуры
+    valid = await validate_profile_photos(all_photos)
+    valid_file_ids = [p["file_id"] for p in valid]
+
+    # Сохраняем индекс
+    index = {
+        "file_ids": valid_file_ids,
+        "current_idx": 0,
+        "updated": datetime.date.today().isoformat(),
+        "total_checked": len(all_photos),
+    }
+    with open(PHOTOS_INDEX_PATH, "w") as f:
+        _json.dump(index, f, ensure_ascii=False)
+
+    logger.info(f"Profile photos refreshed: {len(valid_file_ids)}/{len(all_photos)} valid")
+    return valid_file_ids
+
+
+async def get_next_profile_photo_bytes(bot, user_id: int) -> bytes | None:
+    """Берёт следующее фото в ротации. Если кеш устарел (7+ дней) — обновляет."""
+    import json as _json
+    import datetime
+
+    need_refresh = True
+    index = {}
+
+    if os.path.exists(PHOTOS_INDEX_PATH):
+        try:
+            with open(PHOTOS_INDEX_PATH) as f:
+                index = _json.load(f)
+            updated = datetime.date.fromisoformat(index.get("updated", "2000-01-01"))
+            if (datetime.date.today() - updated).days < 7 and index.get("file_ids"):
+                need_refresh = False
+        except Exception:
+            pass
+
+    if need_refresh:
+        file_ids = await refresh_profile_photos(bot, user_id)
+        if not file_ids:
+            return None
+        with open(PHOTOS_INDEX_PATH) as f:
+            index = _json.load(f)
+
+    file_ids = index.get("file_ids", [])
+    if not file_ids:
+        return None
+
+    # Round-robin: берём следующее фото
+    current_idx = index.get("current_idx", 0) % len(file_ids)
+    file_id = file_ids[current_idx]
+
+    # Обновляем индекс на следующий
+    index["current_idx"] = (current_idx + 1) % len(file_ids)
+    import json as _json2
+    with open(PHOTOS_INDEX_PATH, "w") as f:
+        _json2.dump(index, f, ensure_ascii=False)
+
+    # Читаем байты из кеша
+    path = os.path.join(PHOTOS_DIR, f"{file_id[:20]}.jpg")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return f.read()
+
+    # Файл не найден — скачиваем заново
+    try:
+        tg_file = await bot.get_file(file_id)
+        data = bytes(await tg_file.download_as_bytearray())
+        with open(path, "wb") as f:
+            f.write(data)
+        return data
+    except Exception as e:
+        logger.warning(f"Could not download photo {file_id[:12]}: {e}")
+        return None
 
 
 async def handle_setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновляет фото профиля для коллажа из Telegram-аватарки."""
+    """Обновляет список аватарок для коллажа из Telegram-профиля."""
     if not is_allowed(update):
         return
-    msg = await update.message.reply_text("⏳ Обновляю фото профиля...")
+    msg = await update.message.reply_text("⏳ Проверяю фото профиля через Vision...")
     try:
-        photo = await _fetch_and_save_profile_photo(context.bot, update.effective_user.id)
-        if photo:
+        file_ids = await refresh_profile_photos(context.bot, update.effective_user.id)
+        if file_ids:
             await msg.edit_text(
-                "✅ Фото профиля обновлено! Буду использовать его в ежедневном коллаже.\n"
-                "Для проверки — /collage"
+                f"✅ Готово! Нашёл {len(file_ids)} подходящих фото.\n"
+                f"Каждый коллаж будет с разной фотографией.\n"
+                f"Для проверки — /collage"
             )
         else:
             await msg.edit_text(
-                "❌ У тебя нет фото профиля в Telegram.\n"
-                "Добавь аватарку в настройках Telegram и повтори команду."
+                "❌ Не нашёл подходящих фото в профиле Telegram.\n"
+                "Нужно фото с чётким лицом. Добавь аватарку и повтори /setphoto"
             )
     except Exception as e:
-        logger.error(f"handle_setphoto error: {e}")
+        logger.error(f"handle_setphoto error: {e}", exc_info=True)
         await msg.edit_text(f"❌ Ошибка при обновлении фото: {e}")
 
 

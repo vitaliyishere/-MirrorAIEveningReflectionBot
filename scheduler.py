@@ -334,42 +334,28 @@ async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music
 
 
 async def send_collage(bot: Bot, chat_id: int, day_data: dict, also_channel: bool = False):
-    """Генерирует и отправляет коллаж. Берёт профиль-фото из /data/profile_photo.jpg."""
-    from handlers import PROFILE_PHOTO_PATH, _fetch_and_save_profile_photo
+    """Генерирует и отправляет коллаж. Каждый раз берёт следующее фото из ротации."""
+    from handlers import get_next_profile_photo_bytes, refresh_profile_photos
 
-    # Загружаем фото профиля
-    profile_bytes = None
-    if os.path.exists(PROFILE_PHOTO_PATH):
-        with open(PROFILE_PHOTO_PATH, "rb") as f:
-            profile_bytes = f.read()
-    else:
-        logger.info("Profile photo not found — fetching from Telegram")
+    # Берём следующее фото в ротации (кеш + автообновление раз в 7 дней)
+    profile_bytes = await get_next_profile_photo_bytes(bot, ALLOWED_USER_ID)
+
+    if not profile_bytes:
+        # Первый запуск — пробуем инициализировать кеш
+        logger.info("No profile photos cached — running initial refresh")
         try:
-            profile_bytes = await _fetch_and_save_profile_photo(bot, ALLOWED_USER_ID)
+            file_ids = await refresh_profile_photos(bot, ALLOWED_USER_ID)
+            if file_ids:
+                profile_bytes = await get_next_profile_photo_bytes(bot, ALLOWED_USER_ID)
         except Exception as e:
-            logger.warning(f"Could not fetch profile photo: {e}")
+            logger.warning(f"Initial photo refresh failed: {e}")
 
     if not profile_bytes:
         await bot.send_message(
             chat_id=chat_id,
-            text="📸 Нет фото профиля для коллажа. Выполни /setphoto чтобы установить его."
+            text="📸 Нет подходящих фото профиля для коллажа.\nВыполни /setphoto — нужна аватарка с чётким лицом."
         )
         return
-
-    # Проверяем нужно ли обновить аватарку (раз в неделю)
-    updated_file = PROFILE_PHOTO_PATH + ".updated"
-    if os.path.exists(updated_file):
-        try:
-            import datetime as dt
-            with open(updated_file) as f:
-                last_updated = dt.date.fromisoformat(f.read().strip())
-            if (dt.date.today() - last_updated).days >= 7:
-                logger.info("Profile photo is 7+ days old — refreshing")
-                new_photo = await _fetch_and_save_profile_photo(bot, ALLOWED_USER_ID)
-                if new_photo:
-                    profile_bytes = new_photo
-        except Exception as e:
-            logger.warning(f"Profile photo refresh failed: {e}")
 
     logger.info("Generating daily collage...")
     collage_bytes = await generate_daily_collage(day_data, profile_bytes)
