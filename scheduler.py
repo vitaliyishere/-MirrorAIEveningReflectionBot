@@ -19,24 +19,57 @@ logger = logging.getLogger(__name__)
 TG_MAX_LEN = 4000  # немного меньше 4096 для запаса
 
 
+def _is_block_start(line: str) -> bool:
+    """Возвращает True если строка начинает новый смысловой блок (заголовок секции)."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    # Жирный заголовок Markdown: *Текст* или **Текст**
+    if stripped.startswith("*"):
+        return True
+    # Emoji-префикс (блоки типа 🎵, ✅, 📌, 🗓, 🪞 и т.д.)
+    first_char = stripped[0]
+    if ord(first_char) > 127:
+        return True
+    return False
+
+
 def split_text(text: str, max_len: int = TG_MAX_LEN) -> list[str]:
-    """Разбивает длинный текст на части, разрезая по строкам (не внутри слов)."""
+    """Разбивает длинный текст на части по границам блоков (двойной перенос + заголовок секции).
+    Разрез всегда происходит перед началом нового блока — второе сообщение начинается чисто."""
     if len(text) <= max_len:
         return [text]
+
+    # Разбиваем на блоки по двойному переносу строки
+    blocks = text.split("\n\n")
+
     parts = []
-    current = []
+    current_blocks: list[str] = []
     current_len = 0
-    for line in text.split("\n"):
-        line_len = len(line) + 1  # +1 за \n
-        if current_len + line_len > max_len and current:
-            parts.append("\n".join(current))
-            current = []
-            current_len = 0
-        current.append(line)
-        current_len += line_len
-    if current:
-        parts.append("\n".join(current))
-    return parts
+
+    for block in blocks:
+        block_len = len(block) + 2  # +2 за \n\n разделитель
+
+        if current_len + block_len > max_len and current_blocks:
+            # Ищем последнее место разреза перед block_start в current_blocks
+            # чтобы второй кусок начинался с заголовка блока
+            cut_at = len(current_blocks)
+            for i in range(len(current_blocks) - 1, 0, -1):
+                if _is_block_start(current_blocks[i]):
+                    cut_at = i
+                    break
+
+            parts.append("\n\n".join(current_blocks[:cut_at]).rstrip())
+            current_blocks = current_blocks[cut_at:]
+            current_len = sum(len(b) + 2 for b in current_blocks)
+
+        current_blocks.append(block)
+        current_len += block_len
+
+    if current_blocks:
+        parts.append("\n\n".join(current_blocks).rstrip())
+
+    return [p for p in parts if p.strip()]
 
 
 async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "Markdown") -> object:
