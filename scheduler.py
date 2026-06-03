@@ -11,7 +11,7 @@ from config import (
     TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID,
 )
 from database import get_today_reflections, get_reflections_for_date, get_week_reflections, save_summary, get_unprocessed_reflections, mark_processed, get_one_unprocessed, update_transcript, get_today_completed_tasks, get_today_notes, get_today_music, get_setting, set_setting, get_week_daily_summaries
-from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood, generate_music_mood
+from ai import generate_daily_summary, generate_weekly_summary, generate_weekly_summary_from_daily, generate_day_digest, generate_weekly_from_digests, generate_chronicle, transcribe_audio, generate_reaction, generate_day_mood, generate_music_mood, generate_daily_collage
 from notion_writer import save_to_notion
 
 logger = logging.getLogger(__name__)
@@ -201,6 +201,17 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
         logger.info(f"Daily summary sent to {reply_chat}")
 
+        # Коллаж дня — генерируем и отправляем после резюме
+        try:
+            collage_data = await build_collage_data(
+                bot, user_id,
+                reflections=real_reflections,
+                all_music=list((saved_today or []) + (music or [])),
+            )
+            await send_collage(bot, reply_chat, collage_data, also_channel=(not reply_to))
+        except Exception as collage_err:
+            logger.warning(f"Collage generation failed (non-critical): {collage_err}")
+
         # Проверяем: не упал ли OpenRouter во время генерации?
         import ai as ai_module
         if ai_module.openrouter_error:
@@ -222,6 +233,142 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
             chat_id=reply_chat,
             text="⚠️ Не удалось сгенерировать резюме — попробую позже."
         )
+
+
+async def build_collage_data(bot: Bot, user_id: int, reflections=None, all_music=None, toggl_entries=None, toggl_projects=None) -> dict:
+    """Собирает данные дня для коллажа. Все аргументы опциональны — если не переданы, подтягивает сам."""
+    import datetime as dt
+    msk = pytz.timezone(TIMEZONE)
+    today = dt.datetime.now(msk).date()
+    months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря']
+    days_ru = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье']
+    date_str = f"{days_ru[today.weekday()]}, {today.day} {months[today.month-1]} {today.year}"
+
+    if reflections is None:
+        reflections = await get_today_reflections(user_id)
+    if all_music is None:
+        all_music = await get_today_music(user_id)
+
+    # Активности — короткие выжимки из рефлексий
+    activities = []
+    for r in (reflections or [])[:6]:
+        text = (r.get("transcript") or "").strip()
+        if text:
+            # Берём первое предложение или первые 60 символов
+            short = text.split(".")[0].split("!")[0].split("?")[0][:70].strip()
+            if short:
+                activities.append(short)
+
+    # Музыка
+    music = []
+    seen = set()
+    for m in (all_music or []):
+        key = f"{m.get('track','')}|{m.get('artist','')}"
+        if key not in seen:
+            seen.add(key)
+            music.append(f"{m['track']}" + (f" — {m['artist']}" if m.get('artist') else ""))
+
+    # Toggl
+    toggl = []
+    if toggl_entries and toggl_projects and TOGGL_API_TOKEN:
+        try:
+            from toggl import toggl_context_for_ai, fetch_today_data
+            # Считаем часы по проектам
+            project_hours: dict = {}
+            for entry in toggl_entries:
+                pid = entry.get("project_id")
+                pname = toggl_projects.get(pid, {}).get("name", "Прочее") if toggl_projects else "Работа"
+                dur = entry.get("duration", 0)
+                if dur > 0:
+                    project_hours[pname] = project_hours.get(pname, 0) + dur
+            for pname, secs in sorted(project_hours.items(), key=lambda x: -x[1])[:4]:
+                toggl.append((pname, round(secs / 3600)))
+        except Exception:
+            pass
+    elif TOGGL_API_TOKEN:
+        try:
+            from toggl import fetch_today_data
+            entries, projects = await fetch_today_data(TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID)
+            project_hours: dict = {}
+            for entry in entries:
+                pid = entry.get("project_id")
+                pname = projects.get(pid, {}).get("name", "Прочее") if projects else "Работа"
+                dur = entry.get("duration", 0)
+                if dur > 0:
+                    project_hours[pname] = project_hours.get(pname, 0) + dur
+            for pname, secs in sorted(project_hours.items(), key=lambda x: -x[1])[:4]:
+                toggl.append((pname, round(secs / 3600)))
+        except Exception:
+            pass
+
+    return {
+        "date_str": date_str,
+        "activities": activities,
+        "music": music,
+        "toggl": toggl,
+        "quote": "",   # будет взят из рефлексий в generate_daily_collage если пусто
+        "insight": "",
+    }
+
+
+async def send_collage(bot: Bot, chat_id: int, day_data: dict, also_channel: bool = False):
+    """Генерирует и отправляет коллаж. Берёт профиль-фото из /data/profile_photo.jpg."""
+    from handlers import PROFILE_PHOTO_PATH, _fetch_and_save_profile_photo
+
+    # Загружаем фото профиля
+    profile_bytes = None
+    if os.path.exists(PROFILE_PHOTO_PATH):
+        with open(PROFILE_PHOTO_PATH, "rb") as f:
+            profile_bytes = f.read()
+    else:
+        logger.info("Profile photo not found — fetching from Telegram")
+        try:
+            profile_bytes = await _fetch_and_save_profile_photo(bot, ALLOWED_USER_ID)
+        except Exception as e:
+            logger.warning(f"Could not fetch profile photo: {e}")
+
+    if not profile_bytes:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="📸 Нет фото профиля для коллажа. Выполни /setphoto чтобы установить его."
+        )
+        return
+
+    # Проверяем нужно ли обновить аватарку (раз в неделю)
+    updated_file = PROFILE_PHOTO_PATH + ".updated"
+    if os.path.exists(updated_file):
+        try:
+            import datetime as dt
+            with open(updated_file) as f:
+                last_updated = dt.date.fromisoformat(f.read().strip())
+            if (dt.date.today() - last_updated).days >= 7:
+                logger.info("Profile photo is 7+ days old — refreshing")
+                new_photo = await _fetch_and_save_profile_photo(bot, ALLOWED_USER_ID)
+                if new_photo:
+                    profile_bytes = new_photo
+        except Exception as e:
+            logger.warning(f"Profile photo refresh failed: {e}")
+
+    logger.info("Generating daily collage...")
+    collage_bytes = await generate_daily_collage(day_data, profile_bytes)
+
+    date_str = day_data.get("date_str", "Рефлексия дня")
+    caption = f"🪞 *{date_str}* — коллаж дня"
+
+    await bot.send_photo(
+        chat_id=chat_id,
+        photo=collage_bytes,
+        caption=caption,
+        parse_mode="Markdown"
+    )
+    if also_channel and CHANNEL_ID:
+        await bot.send_photo(
+            chat_id=CHANNEL_ID,
+            photo=collage_bytes,
+            caption=caption,
+            parse_mode="Markdown"
+        )
+    logger.info(f"Collage sent to {chat_id}")
 
 
 async def send_daily_reminder(bot: Bot):

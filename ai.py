@@ -533,5 +533,150 @@ async def describe_image_with_comment(image_bytes: bytes, comment: str) -> str:
             return data["choices"][0]["message"]["content"].strip()
 
 
+async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> bytes:
+    """Генерирует карикатурный коллаж дня через OpenRouter gpt-5-image-mini.
+
+    day_data keys:
+        date_str (str)         — «Среда, 3 июня 2026»
+        activities (list[str]) — список событий дня
+        music (list[str])      — треки: «Track — Artist»
+        toggl (list[tuple])    — [(название, часы), ...]
+        quote (str)            — цитата / мысль дня
+        insight (str)          — инсайт дня
+    Returns: PNG bytes
+    """
+    import base64
+    import aiohttp
+
+    b64_photo = base64.b64encode(profile_photo_bytes).decode()
+
+    activities_str = "\n".join("• " + a for a in (day_data.get("activities") or [])[:6])
+    music_list = (day_data.get("music") or [])[:5]
+    music_str = "\n".join("♪ " + m for m in music_list)
+    toggl_list = day_data.get("toggl") or []
+    toggl_str = "\n".join(name + " " + ("█" * min(h, 8)) + " " + str(h) + "ч" for name, h in toggl_list[:4])
+    toggl_fallback = "Разработка ████ 4ч\nОбщение ██ 2ч\nОтдых █ 1ч"
+    music_fallback = "♪ ... слушал сегодня"
+    quote = day_data.get("quote") or "Сделал — значит молодец"
+    insight = day_data.get("insight") or "Каждый день — данные для следующего"
+    date_str = day_data.get("date_str") or "Сегодня"
+
+    prompt = f"""Turn the person from the reference photo into a grotesque humorous caricature sketch for a personal daily reflection poster.
+
+CARICATURE STYLE: strongly exaggerated anatomy (big expressive head, elongated lanky body, oversized hands, spindly legs), dramatic personality, messy energetic ink lines, sketchbook feel. Keep the face recognizable — same beard, glasses, hairstyle, but exaggerated for comic effect. Confident energetic pose, looking busy and heroic.
+
+COLORS — vibrant and rich:
+- Deep amber-brown kraft paper texture as background (NOT pale yellow — dark, tactile, aged)
+- Multiple saturated colors: burgundy red for headers, forest green for bullet lists, cobalt blue for bar chart, warm amber for skin/watercolor fills, purple for music section
+- Bold watercolor washes, punchy and saturated
+- Overall: like a hand-painted vintage zine, rich texture with coffee ring stains and worn edges
+
+LAYOUT: Tall vertical portrait 2:3 format (iPhone screen ratio). Caricature figure center-tall.
+
+ANNOTATIONS — handwritten Russian, slightly messy and personal:
+
+TOP: «ВИТАЛИК» header with hand-drawn crown ♛
+
+LEFT COLUMN — box with burgundy header "СЕГОДНЯ:":
+{activities_str}
+
+RIGHT COLUMN — box with cobalt header "ВРЕМЯ ДНЯ:" + rough hand-drawn bar chart:
+{toggl_str or toggl_fallback}
+
+SPEECH BUBBLE from caricature: «{quote}»
+
+BOTTOM-LEFT — box with green header "МУЗЫКА ДНЯ:" + vinyl record doodle:
+{music_str or music_fallback}
+
+BOTTOM-RIGHT — box with purple header "ИНСАЙТ:":
+{insight}
+
+FUNNY ARROWS with absurd Russian captions pointing to body parts:
+→ «промпт-инженер» (to head/brain)
+→ «руки-загребалки» (to hands)
+→ «борода на связи» (to beard)
+→ «ноги к дедлайну» (to legs)
+
+SMALL INK VIGNETTES scattered: laptop with glow, coffee cup, music notes, tiny meditating figure
+
+BOTTOM STRIP (slightly darker band):
+🪞 Mirror AI  ·  {date_str}  ·  Рефлексия дня
+
+CRAFT PAPER: visible grain, worn edges, coffee stains, dark amber-brown — like a real handmade zine."""
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://mirror-ai.app",
+                "X-Title": "Mirror AI Collage",
+            },
+            json={
+                "model": "openai/gpt-5-image-mini",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_photo}"}}
+                    ]
+                }],
+                "max_tokens": 4096,
+            },
+            timeout=aiohttp.ClientTimeout(total=240),
+        ) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"Collage API error {resp.status}: {text[:300]}")
+            data = await resp.json()
+
+    images = data["choices"][0]["message"].get("images", [])
+    if not images:
+        raise RuntimeError("Collage: no image returned by model")
+    b64_result = images[0]["image_url"]["url"].split(",", 1)[1]
+    return base64.b64decode(b64_result)
+
+
+async def select_best_profile_photo(photos_bytes: list[bytes]) -> int:
+    """GPT-4o Vision: выбирает лучшее фото профиля (с чётким лицом).
+    Возвращает индекс лучшего фото."""
+    import base64
+    import aiohttp
+
+    if len(photos_bytes) == 1:
+        return 0
+
+    content: list = [{"type": "text", "text":
+        "Перед тобой фотографии профиля одного человека. "
+        "Выбери номер фотографии (начиная с 0), где лицо видно наиболее чётко — анфас или близко к нему, "
+        "хорошее освещение, без фильтров. "
+        "Ответь ТОЛЬКО цифрой — номер лучшей фотографии."}]
+    for photo_b in photos_bytes[:6]:
+        b64 = base64.b64encode(photo_b).decode()
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://mirror-ai.app",
+            },
+            json={
+                "model": OPENROUTER_SUMMARY_MODEL,
+                "messages": [{"role": "user", "content": content}],
+                "max_tokens": 10,
+            },
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as resp:
+            data = await resp.json()
+            text = data["choices"][0]["message"]["content"].strip()
+            try:
+                idx = int(text[0])
+                return min(idx, len(photos_bytes) - 1)
+            except Exception:
+                return 0
+
+
 def ensure_audio_dir():
     os.makedirs(AUDIO_TEMP_DIR, exist_ok=True)

@@ -391,3 +391,79 @@ async def handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"[{time}] {r['transcript']}")
     text = f"📝 Записи за сегодня ({len(reflections)} шт.):\n\n" + "\n\n".join(lines)
     await update.message.reply_text(text)
+
+
+# ---------------------------------------------------------------------------
+# /setphoto — обновить аватарку для коллажа
+# ---------------------------------------------------------------------------
+
+PROFILE_PHOTO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "profile_photo.jpg")
+# На Railway: /data/profile_photo.jpg
+if os.path.exists("/data"):
+    PROFILE_PHOTO_PATH = "/data/profile_photo.jpg"
+
+
+async def _fetch_and_save_profile_photo(bot, user_id: int) -> bytes | None:
+    """Скачивает фото профиля из Telegram, выбирает лучшее через Vision, сохраняет."""
+    from ai import select_best_profile_photo
+    photos = await bot.get_user_profile_photos(user_id, limit=6)
+    if not photos.total_count:
+        return None
+    photos_bytes = []
+    for photo_set in photos.photos:
+        tg_file = await bot.get_file(photo_set[-1].file_id)  # наибольшее разрешение
+        photos_bytes.append(bytes(await tg_file.download_as_bytearray()))
+    best_idx = await select_best_profile_photo(photos_bytes)
+    best_photo = photos_bytes[best_idx]
+    os.makedirs(os.path.dirname(PROFILE_PHOTO_PATH) or ".", exist_ok=True)
+    with open(PROFILE_PHOTO_PATH, "wb") as f:
+        f.write(best_photo)
+    import datetime
+    # Сохраняем дату обновления
+    with open(PROFILE_PHOTO_PATH + ".updated", "w") as f:
+        f.write(datetime.date.today().isoformat())
+    logger.info(f"Profile photo saved: {PROFILE_PHOTO_PATH} (idx={best_idx})")
+    return best_photo
+
+
+async def handle_setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обновляет фото профиля для коллажа из Telegram-аватарки."""
+    if not is_allowed(update):
+        return
+    msg = await update.message.reply_text("⏳ Обновляю фото профиля...")
+    try:
+        photo = await _fetch_and_save_profile_photo(context.bot, update.effective_user.id)
+        if photo:
+            await msg.edit_text(
+                "✅ Фото профиля обновлено! Буду использовать его в ежедневном коллаже.\n"
+                "Для проверки — /collage"
+            )
+        else:
+            await msg.edit_text(
+                "❌ У тебя нет фото профиля в Telegram.\n"
+                "Добавь аватарку в настройках Telegram и повтори команду."
+            )
+    except Exception as e:
+        logger.error(f"handle_setphoto error: {e}")
+        await msg.edit_text(f"❌ Ошибка при обновлении фото: {e}")
+
+
+# ---------------------------------------------------------------------------
+# /collage — сгенерировать коллаж дня вручную
+# ---------------------------------------------------------------------------
+
+async def handle_collage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Генерирует коллаж дня по команде /collage."""
+    if not is_allowed(update):
+        return
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    msg = await update.message.reply_text("🎨 Генерирую коллаж дня...")
+    try:
+        from scheduler import build_collage_data, send_collage
+        day_data = await build_collage_data(context.bot, user_id)
+        await send_collage(context.bot, chat_id, day_data)
+        await msg.delete()
+    except Exception as e:
+        logger.error(f"handle_collage error: {e}", exc_info=True)
+        await msg.edit_text(f"❌ Не удалось создать коллаж: {e}")

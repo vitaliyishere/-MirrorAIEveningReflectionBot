@@ -7,7 +7,7 @@ from aiohttp import web
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import TELEGRAM_BOT_TOKEN, ALLOWED_USER_ID
 from database import init_db, reset_stuck_audio
-from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_channel_photo, handle_text, handle_photo, handle_status, handle_today, handle_summary, handle_channel_summary, handle_weekly
+from handlers import handle_start, handle_voice, handle_channel_voice, handle_channel_text, handle_channel_photo, handle_text, handle_photo, handle_status, handle_today, handle_summary, handle_channel_summary, handle_weekly, handle_collage, handle_setphoto
 from scheduler import setup_scheduler
 from web_server import create_app
 import events
@@ -99,6 +99,8 @@ def main():
         )
 
         tg_app.add_handler(CommandHandler("start", handle_start))
+        tg_app.add_handler(CommandHandler("collage", handle_collage, filters=filters.ChatType.PRIVATE))
+        tg_app.add_handler(CommandHandler("setphoto", handle_setphoto, filters=filters.ChatType.PRIVATE))
         tg_app.add_handler(CommandHandler("weekly", handle_weekly, filters=filters.ChatType.PRIVATE))
         tg_app.add_handler(CommandHandler("status", handle_status))
         tg_app.add_handler(CommandHandler("today", handle_today))
