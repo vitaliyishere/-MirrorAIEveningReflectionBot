@@ -533,6 +533,83 @@ async def describe_image_with_comment(image_bytes: bytes, comment: str) -> str:
             return data["choices"][0]["message"]["content"].strip()
 
 
+def _add_story_bands(img_bytes: bytes, date_str: str) -> bytes:
+    """Добавляет к квадратному изображению шапку и подвал → итог 9:16 (1080×1920).
+    Шапка: «РЕФЛЕКСИЯ ДНЯ / ВИТАЛИК ♛»
+    Подвал: «🪞 Mirror AI · {date_str} · Рефлексия дня»
+    """
+    import io
+    from PIL import Image, ImageDraw, ImageFont
+
+    # Загружаем квадрат
+    sq = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+    W = 1080
+    sq = sq.resize((W, W), Image.LANCZOS)  # 1080×1080
+
+    # Высота полос: шапка 13%, подвал 9% от 1920
+    H_TOTAL = 1920
+    H_HEADER = int(H_TOTAL * 0.13)   # 250px
+    H_FOOTER = int(H_TOTAL * 0.09)   # 173px
+    H_MAIN   = H_TOTAL - H_HEADER - H_FOOTER  # ~1497px → ресайзим квадрат под это
+
+    main = sq.resize((W, H_MAIN), Image.LANCZOS)
+
+    # Цвет полос — тёмная янтарная/крафт
+    BAND_COLOR = (139, 90, 43)     # тёмно-янтарный
+    TEXT_COLOR = (255, 245, 220)   # кремово-белый
+
+    canvas = Image.new("RGBA", (W, H_TOTAL), BAND_COLOR)
+    canvas.paste(main, (0, H_HEADER))
+
+    draw = ImageDraw.Draw(canvas)
+
+    # Пытаемся загрузить шрифт, fallback на встроенный
+    def get_font(size: int):
+        paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/System/Library/Fonts/SFNSDisplay.ttf",
+        ]
+        for p in paths:
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    # Шапка: «РЕФЛЕКСИЯ ДНЯ» (крупно) + «ВИТАЛИК ♛» (помельче)
+    f_big   = get_font(72)
+    f_small = get_font(46)
+
+    title1 = "РЕФЛЕКСИЯ ДНЯ"
+    title2 = "ВИТАЛИК  ♛"
+
+    # Центрируем по горизонтали
+    def draw_centered(text, font, y, color=TEXT_COLOR):
+        try:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw = bbox[2] - bbox[0]
+        except Exception:
+            tw = len(text) * (font.size if hasattr(font, 'size') else 12)
+        draw.text(((W - tw) // 2, y), text, font=font, fill=color)
+
+    draw_centered(title1, f_big,   H_HEADER // 2 - 55)
+    draw_centered(title2, f_small, H_HEADER // 2 + 20)
+
+    # Подвал: «🪞 Mirror AI · date · Рефлексия дня»
+    footer_text = f"Mirror AI  ·  {date_str}  ·  Рефлексия дня"
+    f_footer = get_font(38)
+    draw_centered(footer_text, f_footer, H_HEADER + H_MAIN + (H_FOOTER - 50) // 2)
+
+    # Конвертируем в RGB + PNG bytes
+    result = canvas.convert("RGB")
+    buf = io.BytesIO()
+    result.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
 async def generate_daily_collage(day_data: dict, profile_photo_bytes: bytes) -> bytes:
     """Генерирует карикатурный коллаж дня через OpenRouter gpt-5-image-mini.
 
@@ -606,9 +683,6 @@ MINI VIGNETTES — 3-4 tiny sketch drawings scattered in empty corners (2-3cm si
 - coffee cup with steam
 - small AI/robot head doodle
 
-TOP AREA: handwritten title «РЕФЛЕКСИЯ ДНЯ» + «ВИТАЛИК» with small crown doodle ♛
-BOTTOM AREA: small text «🪞 Mirror AI · {date_str}»
-
 TEXT: All Russian Cyrillic. Mixed handwritten styles — some bold, some regular. Slightly imperfect, like real handwriting. NOT uniform digital fonts.
 
 COLORS: Muted, warm palette. Aged paper base. Colored pencil/watercolor accents: rust orange for figure, muted blue/green/burgundy for info blocks. Nothing too bright or saturated — this is a personal journal, not a poster."""
@@ -644,7 +718,14 @@ COLORS: Muted, warm palette. Aged paper base. Colored pencil/watercolor accents:
     if not images:
         raise RuntimeError("Collage: no image returned by model")
     b64_result = images[0]["image_url"]["url"].split(",", 1)[1]
-    return base64.b64decode(b64_result)
+    square_bytes = base64.b64decode(b64_result)
+
+    # Добавляем шапку + подвал → итог 9:16 (1080×1920)
+    try:
+        return _add_story_bands(square_bytes, date_str)
+    except Exception as e:
+        logger.warning(f"Pillow post-processing failed, returning square: {e}")
+        return square_bytes
 
 
 async def validate_profile_photos(photos: list[dict]) -> list[dict]:
