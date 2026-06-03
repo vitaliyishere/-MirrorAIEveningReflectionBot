@@ -610,10 +610,10 @@ Right side: small text «Рефлексия дня»
 All text in Russian Cyrillic. Handwritten/hand-lettered style — bold, clear, slightly imperfect. Like the style in Адель/Виталик character sheets: short punchy labels, NOT long paragraphs. Every word readable at a glance. Headers bold and colored, body text smaller but crisp.
 
 === COLORS ===
-- Background: dark warm amber kraft paper with visible grain and coffee stains
-- Headers: each box has its own color (red, blue, green, purple)
-- Caricature: warm watercolor washes, amber and rust tones
-- Footer/header bands: slightly darker amber
+- Background: warm cream-beige parchment paper — light aged yellowy-ivory tone, like old book pages or vintage newspaper. NOT dark, NOT brown. The exact tone from classic character sheet illustrations: pale warm tan #E8D5A3 range, subtle paper grain and faint coffee ring stains
+- Headers: each box has its own color (burgundy red, cobalt blue, forest green, deep purple)
+- Caricature: warm watercolor washes, amber and rust tones on the cream paper
+- Footer/header bands: slightly deeper warm beige, same parchment family
 
 === STYLE ===
 Messy expressive ink lines + selective watercolor fills. Vintage illustrated zine energy. Every annotation connected to the figure with hand-drawn arrows. Information-rich but visually exciting."""
