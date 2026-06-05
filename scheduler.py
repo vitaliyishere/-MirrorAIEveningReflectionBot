@@ -266,16 +266,16 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
         logger.info(f"Daily summary sent to {reply_chat}")
 
-        # Коллаж дня — генерируем и отправляем после резюме
-        try:
-            collage_data = await build_collage_data(
-                bot, user_id,
-                reflections=real_reflections,
-                all_music=list((saved_today or []) + (music or [])),
-            )
-            await send_collage(bot, reply_chat, collage_data, also_channel=(not reply_to))
-        except Exception as collage_err:
-            logger.warning(f"Collage generation failed (non-critical): {collage_err}")
+        # Коллаж дня — временно отключён (REF-028 в беклоге)
+        # try:
+        #     collage_data = await build_collage_data(
+        #         bot, user_id,
+        #         reflections=real_reflections,
+        #         all_music=list((saved_today or []) + (music or [])),
+        #     )
+        #     await send_collage(bot, reply_chat, collage_data, also_channel=(not reply_to))
+        # except Exception as collage_err:
+        #     logger.warning(f"Collage generation failed (non-critical): {collage_err}")
 
         # Проверяем: не упал ли OpenRouter во время генерации?
         import ai as ai_module
