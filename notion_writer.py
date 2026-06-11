@@ -228,7 +228,42 @@ async def _get_anchor(client: AsyncClient, page_id: str) -> str | None:
         return None
 
 
-async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None, mood: str = None, music: list[dict] = None):
+async def _delete_todays_entry(client: AsyncClient, page_id: str, anchor_id: str):
+    """Удаляет блок сегодняшней записи (heading_2 + содержимое до divider включительно),
+    если он стоит сразу после якоря."""
+    if not anchor_id:
+        return
+    try:
+        response = await client.blocks.children.list(block_id=page_id, page_size=20)
+        children = response.get("results", [])
+        anchor_idx = next((i for i, b in enumerate(children) if b["id"] == anchor_id), None)
+        if anchor_idx is None or anchor_idx + 1 >= len(children):
+            return
+        first = children[anchor_idx + 1]
+        today = date.today().strftime("%d.%m.%Y")
+        if first["type"] != "heading_2":
+            return
+        title_text = "".join(t["plain_text"] for t in first["heading_2"].get("rich_text", []))
+        if today not in title_text:
+            return
+
+        to_delete = [first["id"]]
+        for b in children[anchor_idx + 2:]:
+            to_delete.append(b["id"])
+            if b["type"] == "divider":
+                break
+
+        for block_id in to_delete:
+            try:
+                await client.blocks.delete(block_id=block_id)
+            except Exception as e:
+                logger.warning(f"Notion: не удалось удалить блок {block_id}: {e}")
+        logger.info(f"Notion: удалена сегодняшняя запись ({len(to_delete)} блоков)")
+    except Exception as e:
+        logger.error(f"Notion: не удалось удалить сегодняшнюю запись: {e}")
+
+
+async def save_to_notion(summary: str, summary_type: str, reflections: list[dict] = None, chronicle: str = None, completed_tasks: str = None, notes: list[dict] = None, mood: str = None, music: list[dict] = None, replace_existing: bool = False):
     if not NOTION_TOKEN:
         logger.warning("NOTION_TOKEN not set, skipping Notion save")
         return
@@ -346,6 +381,8 @@ async def save_to_notion(summary: str, summary_type: str, reflections: list[dict
             blocks = _parse_summary_to_blocks(summary, summary_type, mood=mood)
 
         anchor_id = await _get_anchor(client, NOTION_PAGE_ID)
+        if replace_existing and summary_type == "daily":
+            await _delete_todays_entry(client, NOTION_PAGE_ID, anchor_id)
         append_kwargs = {"block_id": NOTION_PAGE_ID, "children": blocks}
         if anchor_id:
             append_kwargs["after"] = anchor_id

@@ -72,14 +72,28 @@ def split_text(text: str, max_len: int = TG_MAX_LEN) -> list[str]:
     return [p for p in parts if p.strip()]
 
 
-async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "Markdown") -> object:
+async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "Markdown") -> list:
     """Отправляет сообщение, разбивая на части если длиннее 4000 символов.
-    Возвращает последнее отправленное сообщение."""
+    Возвращает список всех отправленных сообщений."""
     parts = split_text(text)
-    msg = None
+    msgs = []
     for part in parts:
-        msg = await bot.send_message(chat_id=chat_id, text=part, parse_mode=parse_mode)
-    return msg
+        msgs.append(await bot.send_message(chat_id=chat_id, text=part, parse_mode=parse_mode))
+    return msgs
+
+
+async def _delete_messages(bot: Bot, chat_id: int, ids_csv: str):
+    """Удаляет сообщения по списку ID через запятую. Ошибки игнорируются."""
+    if not ids_csv or not chat_id:
+        return
+    for raw_id in ids_csv.split(","):
+        raw_id = raw_id.strip()
+        if not raw_id:
+            continue
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=int(raw_id))
+        except Exception:
+            pass
 
 
 async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = None):
@@ -256,14 +270,31 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
                 for n in notes
             )
             tg_text += f"\n\n*Заметки дня*\n{notes_lines}"
-        daily_msg = await send_long_message(bot, reply_chat, tg_text)
-        await set_setting("last_daily_msg_id", str(daily_msg.message_id))
+        msk_today = dt.datetime.now(pytz.timezone(TIMEZONE)).date().isoformat()
+        is_today = (today == msk_today)
+
+        if is_today:
+            last_daily_date = await get_setting("last_daily_date")
+            if last_daily_date == today:
+                prev_chat_id = await get_setting("last_daily_chat_id")
+                prev_msg_ids = await get_setting("last_daily_msg_id")
+                if prev_chat_id and prev_msg_ids:
+                    await _delete_messages(bot, int(prev_chat_id), prev_msg_ids)
+                if CHANNEL_ID:
+                    prev_ch_msg_ids = await get_setting("last_daily_channel_msg_id")
+                    if prev_ch_msg_ids:
+                        await _delete_messages(bot, CHANNEL_ID, prev_ch_msg_ids)
+
+        daily_msgs = await send_long_message(bot, reply_chat, tg_text)
+        await set_setting("last_daily_msg_id", ",".join(str(m.message_id) for m in daily_msgs))
         await set_setting("last_daily_chat_id", str(reply_chat))
         # Автоматический репорт по расписанию — дублируем в канал если запрос был из лички
         if not reply_to and CHANNEL_ID:
-            ch_msg = await send_long_message(bot, CHANNEL_ID, tg_text)
-            await set_setting("last_daily_channel_msg_id", str(ch_msg.message_id))
-        await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music)
+            ch_msgs = await send_long_message(bot, CHANNEL_ID, tg_text)
+            await set_setting("last_daily_channel_msg_id", ",".join(str(m.message_id) for m in ch_msgs))
+        if is_today:
+            await set_setting("last_daily_date", today)
+        await save_to_notion(summary, "daily", reflections, chronicle, completed_tasks, notes, mood=mood, music=music, replace_existing=is_today)
         logger.info(f"Daily summary sent to {reply_chat}")
 
         # Коллаж дня — временно отключён (REF-028 в беклоге)
@@ -565,12 +596,12 @@ async def send_weekly_summary(bot: Bot):
         today = date.today().isoformat()
         await save_summary(user_id, "weekly", summary, today)
         tg_text = f"🗓 *Резюме недели — {today}*\n\n{fmt(summary)}"
-        weekly_msg = await send_long_message(bot, user_id, tg_text)
-        await set_setting("last_weekly_msg_id", str(weekly_msg.message_id))
+        weekly_msgs = await send_long_message(bot, user_id, tg_text)
+        await set_setting("last_weekly_msg_id", str(weekly_msgs[-1].message_id))
         await set_setting("last_weekly_chat_id", str(user_id))
         if CHANNEL_ID:
-            ch_msg = await send_long_message(bot, CHANNEL_ID, tg_text)
-            await set_setting("last_weekly_channel_msg_id", str(ch_msg.message_id))
+            ch_msgs = await send_long_message(bot, CHANNEL_ID, tg_text)
+            await set_setting("last_weekly_channel_msg_id", str(ch_msgs[-1].message_id))
         await save_to_notion(summary, "weekly")
         logger.info(f"Weekly summary sent to {user_id}")
     except Exception as e:
