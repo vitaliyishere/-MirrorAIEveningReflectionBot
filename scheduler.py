@@ -145,7 +145,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         return
     transcripts = [r["transcript"] for r in real_reflections]
     try:
-        await bot.send_message(chat_id=reply_chat, text="⏳ Генерирую резюме...")
+        progress_msg = await bot.send_message(chat_id=reply_chat, text="⏳ Генерирую резюме...")
 
         # Toggl — сначала, чтобы пробросить контекст в AI промпт
         toggl_block = ""
@@ -284,6 +284,11 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
                     prev_ch_msg_ids = await get_setting("last_daily_channel_msg_id")
                     if prev_ch_msg_ids:
                         await _delete_messages(bot, CHANNEL_ID, prev_ch_msg_ids)
+
+        try:
+            await bot.delete_message(chat_id=reply_chat, message_id=progress_msg.message_id)
+        except Exception:
+            pass
 
         daily_msgs = await send_long_message(bot, reply_chat, tg_text)
         await set_setting("last_daily_msg_id", ",".join(str(m.message_id) for m in daily_msgs))
