@@ -72,6 +72,33 @@ def split_text(text: str, max_len: int = TG_MAX_LEN) -> list[str]:
     return [p for p in parts if p.strip()]
 
 
+def _format_tasks_block(completed_tasks: str) -> str:
+    """Парсит сырой текст завершённых задач (Toggl-track/ручной ввод) в блок '✅ Сделано сегодня'."""
+    import re as _re
+    if not completed_tasks:
+        return ""
+    tasks_clean = completed_tasks.strip()
+    if tasks_clean.upper().startswith("TASKS:"):
+        tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
+    if not tasks_clean:
+        return ""
+    raw_lines = [l.strip() for l in tasks_clean.split("\n") if l.strip()]
+    _time_re = _re.compile(r'^(\d{1,2}:\d{2})\s*[-–]?\s*(.+)$')
+    parsed = []
+    has_times = False
+    for l in raw_lines:
+        m = _time_re.match(l)
+        if m:
+            has_times = True
+            parsed.append((m.group(1), m.group(2).strip()))
+        else:
+            parsed.append((None, l))
+    if has_times:
+        parsed.sort(key=lambda x: x[0] or "99:99")
+    lines = "\n".join(f"• {name}" for _, name in parsed)
+    return f"✅ *Сделано сегодня*\n{lines}\n\n"
+
+
 async def send_long_message(bot, chat_id: int, text: str, parse_mode: str = "Markdown") -> list:
     """Отправляет сообщение, разбивая на части если длиннее 4000 символов.
     Возвращает список всех отправленных сообщений."""
@@ -94,6 +121,95 @@ async def _delete_messages(bot: Bot, chat_id: int, ids_csv: str):
             await bot.delete_message(chat_id=chat_id, message_id=int(raw_id))
         except Exception:
             pass
+
+
+async def _send_voiceless_summary(bot: Bot, reply_chat: int, reply_to, today: str):
+    """День без голосовых — собираем резюме из Toggl/задач/музыки/заметок без AI-анализа.
+    Если и там пусто — шлём заглушку (как и раньше)."""
+    import datetime as dt
+    user_id = ALLOWED_USER_ID
+
+    completed_tasks = await get_today_completed_tasks(user_id)
+    notes = await get_today_notes(user_id)
+    music = await get_today_music(user_id)
+
+    toggl_block = ""
+    if TOGGL_API_TOKEN:
+        try:
+            from toggl import fetch_today_data, format_toggl_block
+            toggl_entries, toggl_projects = await fetch_today_data(TOGGL_API_TOKEN, TOGGL_WORKSPACE_ID, date_str=today)
+            toggl_block = format_toggl_block(toggl_entries, toggl_projects)
+        except Exception as e:
+            logger.warning(f"Toggl fetch failed (non-critical): {e}")
+
+    saved_today = []
+    try:
+        from spotify import get_saved_today
+        saved_today = await get_saved_today()
+    except Exception as e:
+        logger.warning(f"Spotify saved today failed: {e}")
+
+    if not (completed_tasks or notes or music or toggl_block or saved_today):
+        await bot.send_message(
+            chat_id=reply_chat,
+            text="Сегодня ты ничего не рассказывал, и мне нечего тебе подсветить."
+        )
+        return
+
+    tg_text = f"📋 *Резюме дня — {today}*\n\n"
+    tg_text += _format_tasks_block(completed_tasks)
+
+    if toggl_block:
+        tg_text += f"{toggl_block}\n\n"
+
+    if saved_today or music:
+        tg_text += "*Музыка дня*"
+        if saved_today:
+            tg_text += "\n_Понравилось сегодня:_"
+            for m in saved_today:
+                tg_text += f"\n❤️ {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
+        if music:
+            if saved_today:
+                tg_text += "\n_Отмечено вручную:_"
+            for m in music:
+                tg_text += f"\n🎵 {m['track']}" + (f" — {m['artist']}" if m.get('artist') else "")
+        tg_text += "\n\n"
+
+    if notes:
+        notes_lines = "\n".join(
+            f"📌 {n['created_at'][11:16]} · {n.get('title', '').strip() or 'Заметка'}"
+            for n in notes
+        )
+        tg_text += f"*Заметки дня*\n{notes_lines}\n\n"
+
+    tg_text = tg_text.rstrip() + "\n"
+
+    msk_today = dt.datetime.now(pytz.timezone(TIMEZONE)).date().isoformat()
+    is_today = (today == msk_today)
+
+    if is_today:
+        last_daily_date = await get_setting("last_daily_date")
+        if last_daily_date == today:
+            prev_chat_id = await get_setting("last_daily_chat_id")
+            prev_msg_ids = await get_setting("last_daily_msg_id")
+            if prev_chat_id and prev_msg_ids:
+                await _delete_messages(bot, int(prev_chat_id), prev_msg_ids)
+            if CHANNEL_ID:
+                prev_ch_msg_ids = await get_setting("last_daily_channel_msg_id")
+                if prev_ch_msg_ids:
+                    await _delete_messages(bot, CHANNEL_ID, prev_ch_msg_ids)
+
+    daily_msgs = await send_long_message(bot, reply_chat, tg_text)
+    await set_setting("last_daily_msg_id", ",".join(str(m.message_id) for m in daily_msgs))
+    await set_setting("last_daily_chat_id", str(reply_chat))
+    if not reply_to and CHANNEL_ID:
+        ch_msgs = await send_long_message(bot, CHANNEL_ID, tg_text)
+        await set_setting("last_daily_channel_msg_id", ",".join(str(m.message_id) for m in ch_msgs))
+    if is_today:
+        await set_setting("last_daily_date", today)
+
+    await save_to_notion("", "daily", completed_tasks=completed_tasks, notes=notes, music=music, replace_existing=is_today)
+    logger.info(f"Voiceless daily summary sent to {reply_chat}")
 
 
 async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = None):
@@ -125,10 +241,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         today = dt.datetime.now(msk).date().isoformat()
 
     if not reflections:
-        await bot.send_message(
-            chat_id=reply_chat,
-            text="Сегодня ты ничего не рассказывал, и мне нечего тебе подсветить."
-        )
+        await _send_voiceless_summary(bot, reply_chat, reply_to, today)
         return
 
     # Только реальные рефлексии: голосовые + короткий текст руками
@@ -180,28 +293,7 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
         tg_text = f"📋 *Резюме дня — {today}* · {mood}\n\n"
 
         # 1. Сделано сегодня — первым
-        if completed_tasks:
-            import re as _re
-            tasks_clean = completed_tasks.strip()
-            if tasks_clean.upper().startswith("TASKS:"):
-                tasks_clean = tasks_clean[tasks_clean.index("\n")+1:].strip() if "\n" in tasks_clean else ""
-            if tasks_clean:
-                raw_lines = [l.strip() for l in tasks_clean.split("\n") if l.strip()]
-                # Пытаемся разобрать время из строк вида "09:00 Задача" или "09:00 - Задача"
-                _time_re = _re.compile(r'^(\d{1,2}:\d{2})\s*[-–]?\s*(.+)$')
-                parsed = []
-                has_times = False
-                for l in raw_lines:
-                    m = _time_re.match(l)
-                    if m:
-                        has_times = True
-                        parsed.append((m.group(1), m.group(2).strip()))
-                    else:
-                        parsed.append((None, l))
-                if has_times:
-                    parsed.sort(key=lambda x: x[0] or "99:99")
-                lines = "\n".join(f"• {name}" for _, name in parsed)
-                tg_text += f"✅ *Сделано сегодня*\n{lines}\n\n"
+        tg_text += _format_tasks_block(completed_tasks)
 
         # 2. Время дня (Toggl)
         if toggl_block:
