@@ -329,17 +329,30 @@ async def handle_whoop_preview(request: web.Request) -> web.Response:
     if secret != API_SECRET:
         return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
     try:
-        from whoop import get_latest_recovery, get_latest_sleep, get_latest_cycle, get_today_workouts
+        from whoop import (
+            get_latest_recovery, get_latest_sleep, get_latest_cycle, get_today_workouts,
+            get_profile, get_body_measurement, _get,
+        )
         recovery = await get_latest_recovery()
         sleep = await get_latest_sleep()
         cycle = await get_latest_cycle()
         workouts = await get_today_workouts()
+        profile = await get_profile()
+        body = await get_body_measurement()
+        raw_recovery = await _get("/recovery", {"limit": 1})
+        raw_sleep = await _get("/activity/sleep", {"limit": 1})
+        raw_cycle = await _get("/cycle", {"limit": 1})
         return web.json_response({
             "ok": True,
             "recovery": recovery,
             "sleep": sleep,
             "cycle": cycle,
             "workouts": workouts,
+            "profile": profile,
+            "body_measurement": body,
+            "raw_recovery": raw_recovery,
+            "raw_sleep": raw_sleep,
+            "raw_cycle": raw_cycle,
         })
     except Exception as e:
         logger.error(f"WHOOP preview error: {e}", exc_info=True)

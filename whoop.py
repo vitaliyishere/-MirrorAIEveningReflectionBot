@@ -191,6 +191,14 @@ async def get_latest_cycle() -> Optional[dict]:
     }
 
 
+async def get_profile() -> Optional[dict]:
+    return await _get("/user/profile/basic")
+
+
+async def get_body_measurement() -> Optional[dict]:
+    return await _get("/user/measurement/body")
+
+
 async def get_today_workouts() -> list[dict]:
     """Тренировки за последние 24 часа."""
     import datetime
