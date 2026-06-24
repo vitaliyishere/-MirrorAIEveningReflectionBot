@@ -199,6 +199,52 @@ async def get_body_measurement() -> Optional[dict]:
     return await _get("/user/measurement/body")
 
 
+def _recovery_emoji(score: Optional[float]) -> str:
+    if score is None:
+        return ""
+    if score >= 67:
+        return "🟢"
+    if score >= 34:
+        return "🟡"
+    return "🔴"
+
+
+def format_whoop_block(recovery: Optional[dict], sleep: Optional[dict], cycle: Optional[dict]) -> str:
+    """Вариант B — развёрнутый блок метрик тела для резюме дня."""
+    if not (recovery or sleep or cycle):
+        return ""
+
+    lines = ["💪 *Тело дня*"]
+
+    if recovery and recovery.get("recovery_score") is not None:
+        emoji = _recovery_emoji(recovery["recovery_score"])
+        hrv = recovery.get("hrv_ms")
+        rhr = recovery.get("resting_hr")
+        detail = []
+        if hrv is not None:
+            detail.append(f"HRV {hrv:.0f} мс")
+        if rhr is not None:
+            detail.append(f"пульс покоя {rhr:.0f}")
+        detail_str = f" ({' · '.join(detail)})" if detail else ""
+        lines.append(f"🔋 Recovery: {recovery['recovery_score']:.0f}% {emoji}{detail_str}")
+
+    if sleep and sleep.get("total_sleep_hours") is not None:
+        perf = sleep.get("performance_pct")
+        eff = sleep.get("efficiency_pct")
+        detail = []
+        if perf is not None:
+            detail.append(f"performance {perf:.0f}%")
+        if eff is not None:
+            detail.append(f"эффективность {eff:.0f}%")
+        detail_str = f" · {' · '.join(detail)}" if detail else ""
+        lines.append(f"😴 Сон: {sleep['total_sleep_hours']:.1f}ч{detail_str}")
+
+    if cycle and cycle.get("strain") is not None:
+        lines.append(f"⚡ Strain: {cycle['strain']:.1f}")
+
+    return "\n".join(lines) + "\n\n"
+
+
 async def get_today_workouts() -> list[dict]:
     """Тренировки за последние 24 часа."""
     import datetime
