@@ -263,6 +263,28 @@ async def handle_spotify_callback(request: web.Request) -> web.Response:
     return web.Response(text="❌ Не удалось обменять code. Проверь логи.", status=500)
 
 
+async def handle_privacy(request: web.Request) -> web.Response:
+    """Privacy Policy — требуется для OAuth-приложений (Spotify, WHOOP и т.п.)."""
+    html = """<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><title>Privacy Policy — Mirror AI Reflection Bot</title>
+<style>body{font-family:sans-serif;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6;color:#222}h1{font-size:22px}h2{font-size:17px;margin-top:28px}</style>
+</head><body>
+<h1>Privacy Policy — Mirror AI Reflection Bot</h1>
+<p>Mirror AI Reflection Bot — личный Telegram-бот для вечерней рефлексии, используемый одним пользователем (владельцем бота).</p>
+<h2>Какие данные собираются</h2>
+<p>Бот может получать данные через интеграции, которые владелец сам подключает: голосовые заметки и их транскрипты, выполненные задачи, данные тайм-трекинга (Toggl), музыкальная активность (Spotify) и метрики здоровья/восстановления (WHOOP — сон, recovery, нагрузка, циклы).</p>
+<h2>Как используются данные</h2>
+<p>Данные используются исключительно для формирования персонального дневного/недельного резюме владельца бота в Telegram и в его личном Notion. Данные не передаются третьим лицам, не продаются и не используются для рекламы.</p>
+<h2>Хранение</h2>
+<p>Данные хранятся в приватной базе данных бота (Railway) и в приватном Notion-аккаунте владельца. Доступ к боту ограничен одним Telegram ID.</p>
+<h2>Отзыв доступа</h2>
+<p>Владелец может отозвать доступ к любой интеграции (Spotify, WHOOP, Toggl) в настройках соответствующего сервиса в любой момент.</p>
+<h2>Контакт</h2>
+<p>malykhin.v@gmail.com</p>
+</body></html>"""
+    return web.Response(text=html, content_type="text/html")
+
+
 def create_app(bot=None) -> web.Application:
     app = web.Application()
     app["bot"] = bot
@@ -275,4 +297,5 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/spotify/auth", handle_spotify_auth)
     app.router.add_get("/spotify/callback", handle_spotify_callback)
     app.router.add_get("/admin/music-preview", handle_music_preview)
+    app.router.add_get("/privacy", handle_privacy)
     return app
