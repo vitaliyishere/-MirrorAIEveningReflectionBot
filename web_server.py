@@ -285,6 +285,67 @@ async def handle_privacy(request: web.Request) -> web.Response:
     return web.Response(text=html, content_type="text/html")
 
 
+async def handle_whoop_auth(request: web.Request) -> web.Response:
+    """Редиректит на страницу авторизации WHOOP. Защищён секретом."""
+    secret = request.rel_url.query.get("secret", "")
+    if secret != API_SECRET:
+        return web.Response(text="Unauthorized", status=401)
+    from whoop import get_auth_url
+    raise web.HTTPFound(get_auth_url())
+
+
+async def handle_whoop_callback(request: web.Request) -> web.Response:
+    """Принимает code от WHOOP, обменивает на токены."""
+    code = request.rel_url.query.get("code")
+    error = request.rel_url.query.get("error")
+    if error:
+        logger.error(f"WHOOP OAuth error: {error}")
+        return web.Response(text=f"❌ WHOOP отказал: {error}", content_type="text/html")
+    if not code:
+        return web.Response(text="❌ Нет code в запросе", status=400)
+    from whoop import exchange_code
+    ok = await exchange_code(code)
+    if ok:
+        try:
+            from config import ALLOWED_USER_ID
+            bot = request.app.get("bot")
+            if bot:
+                await bot.send_message(
+                    chat_id=ALLOWED_USER_ID,
+                    text="✅ WHOOP подключён! Скоро добавим метрики восстановления в резюме дня."
+                )
+        except Exception as e:
+            logger.warning(f"Could not notify user: {e}")
+        return web.Response(
+            text="<h2>✅ WHOOP подключён!</h2><p>Можно закрыть эту страницу.</p>",
+            content_type="text/html"
+        )
+    return web.Response(text="❌ Не удалось обменять code. Проверь логи.", status=500)
+
+
+async def handle_whoop_preview(request: web.Request) -> web.Response:
+    """Debug: показывает все данные WHOOP, которые сейчас доступны."""
+    secret = request.headers.get("X-Secret", "")
+    if secret != API_SECRET:
+        return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
+    try:
+        from whoop import get_latest_recovery, get_latest_sleep, get_latest_cycle, get_today_workouts
+        recovery = await get_latest_recovery()
+        sleep = await get_latest_sleep()
+        cycle = await get_latest_cycle()
+        workouts = await get_today_workouts()
+        return web.json_response({
+            "ok": True,
+            "recovery": recovery,
+            "sleep": sleep,
+            "cycle": cycle,
+            "workouts": workouts,
+        })
+    except Exception as e:
+        logger.error(f"WHOOP preview error: {e}", exc_info=True)
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
 def create_app(bot=None) -> web.Application:
     app = web.Application()
     app["bot"] = bot
@@ -298,4 +359,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/spotify/callback", handle_spotify_callback)
     app.router.add_get("/admin/music-preview", handle_music_preview)
     app.router.add_get("/privacy", handle_privacy)
+    app.router.add_get("/whoop/auth", handle_whoop_auth)
+    app.router.add_get("/whoop/callback", handle_whoop_callback)
+    app.router.add_get("/admin/whoop-preview", handle_whoop_preview)
     return app
