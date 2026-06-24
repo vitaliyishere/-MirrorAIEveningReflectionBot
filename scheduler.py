@@ -149,7 +149,17 @@ async def _send_voiceless_summary(bot: Bot, reply_chat: int, reply_to, today: st
     except Exception as e:
         logger.warning(f"Spotify saved today failed: {e}")
 
-    if not (completed_tasks or notes or music or toggl_block or saved_today):
+    whoop_block = ""
+    try:
+        import whoop
+        whoop_recovery = await whoop.get_latest_recovery()
+        whoop_sleep = await whoop.get_latest_sleep()
+        whoop_cycle = await whoop.get_latest_cycle()
+        whoop_block = whoop.format_whoop_block(whoop_recovery, whoop_sleep, whoop_cycle)
+    except Exception as e:
+        logger.warning(f"WHOOP fetch failed (non-critical): {e}")
+
+    if not (completed_tasks or notes or music or toggl_block or saved_today or whoop_block):
         await bot.send_message(
             chat_id=reply_chat,
             text="Сегодня ты ничего не рассказывал, и мне нечего тебе подсветить."
@@ -158,6 +168,9 @@ async def _send_voiceless_summary(bot: Bot, reply_chat: int, reply_to, today: st
 
     tg_text = f"📋 *Резюме дня — {today}*\n\n"
     tg_text += _format_tasks_block(completed_tasks)
+
+    if whoop_block:
+        tg_text += whoop_block
 
     if toggl_block:
         tg_text += f"{toggl_block}\n\n"
@@ -294,6 +307,19 @@ async def send_daily_summary(bot: Bot, reply_to: int = None, for_date: str = Non
 
         # 1. Сделано сегодня — первым
         tg_text += _format_tasks_block(completed_tasks)
+
+        # WHOOP — тело дня
+        whoop_block = ""
+        try:
+            import whoop
+            whoop_recovery = await whoop.get_latest_recovery()
+            whoop_sleep = await whoop.get_latest_sleep()
+            whoop_cycle = await whoop.get_latest_cycle()
+            whoop_block = whoop.format_whoop_block(whoop_recovery, whoop_sleep, whoop_cycle)
+        except Exception as e:
+            logger.warning(f"WHOOP fetch failed (non-critical): {e}")
+        if whoop_block:
+            tg_text += whoop_block
 
         # 2. Время дня (Toggl)
         if toggl_block:
